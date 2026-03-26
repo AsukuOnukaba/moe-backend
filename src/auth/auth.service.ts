@@ -122,11 +122,18 @@ export class AuthService {
     });
     const names = roles.map((r) => r.role.name);
     if (names.includes('admin')) return 'admin';
-    if (names.includes('provider')) return 'provider';
+    if (names.includes('artisan')) return 'artisan';
     return 'customer';
   }
 
-  async register(input: { name: string; email: string; password: string; phone?: string }) {
+  async register(input: {
+    name: string;
+    email: string;
+    password: string;
+    phone?: string;
+    role?: 'customer' | 'artisan';
+  }) {
+    const role: MoeRole = (input.role ?? 'customer') as MoeRole;
     const existing = await this.prisma.user.findUnique({
       where: { email: input.email.toLowerCase() },
     });
@@ -148,13 +155,21 @@ export class AuthService {
       },
     });
 
-    await this.ensureUserRole(user.id, 'customer');
-    const role = await this.resolvePrimaryRole(user.id);
+    await this.ensureUserRole(user.id, role);
+    if (role === 'artisan') {
+      await this.prisma.artisanProfile.create({
+        data: {
+          userId: user.id,
+          brandName: input.name,
+          heroImage: null,
+        },
+      });
+    }
     const tokens = await this.issueTokens(user, role);
 
     return {
       ...tokens,
-      user: this.toCustomerProfile(user),
+      user: await this.toProfile(user, role),
     };
   }
 
@@ -174,7 +189,7 @@ export class AuthService {
     const tokens = await this.issueTokens(user, role);
     return {
       ...tokens,
-      user: this.toCustomerProfile(user),
+      user: await this.toProfile(user, role),
     };
   }
 
@@ -222,17 +237,122 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException({ message: 'Unauthorized', code: 'AUTH_TOKEN_EXPIRED' });
     }
-    return this.toCustomerProfile(user);
+    const role = await this.resolvePrimaryRole(userId);
+    const artisanProfile =
+      role === 'artisan' ? await this.prisma.artisanProfile.findUnique({ where: { userId } }) : null;
+    return this.toProfile(user, role, artisanProfile);
   }
 
-  private toCustomerProfile(user: {
-    id: number;
-    name: string;
-    email: string;
-    phone: string | null;
-    avatarUrl: string | null;
-    createdAt: Date;
-  }) {
+  async patchProfile(
+    userId: number,
+    input: {
+      name?: string;
+      phone?: string | null;
+      artisanProfile?: {
+        brandName?: string;
+        about?: string | null;
+        city?: string | null;
+        state?: string | null;
+        category?: string | null;
+        styleTags?: string | string[] | null;
+        serviceCategories?: string | string[] | null;
+      };
+    },
+  ) {
+    const role = await this.resolvePrimaryRole(userId);
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+      },
+    });
+
+    let artisanProfile: any = null;
+    if (role === 'artisan' && input.artisanProfile) {
+      const normalizeCommaList = (value: string | string[] | null | undefined) => {
+        if (value === undefined) return undefined;
+        if (value === null) return null;
+        return Array.isArray(value) ? value.join(',') : value;
+      };
+
+      artisanProfile = await this.prisma.artisanProfile.upsert({
+        where: { userId },
+        create: {
+          userId,
+          brandName: input.artisanProfile.brandName ?? user.name,
+          heroImage: null,
+        },
+        update: {
+          ...(input.artisanProfile.brandName !== undefined
+            ? { brandName: input.artisanProfile.brandName }
+            : {}),
+          ...(input.artisanProfile.about !== undefined ? { about: input.artisanProfile.about } : {}),
+          ...(input.artisanProfile.city !== undefined ? { city: input.artisanProfile.city } : {}),
+          ...(input.artisanProfile.state !== undefined ? { state: input.artisanProfile.state } : {}),
+          ...(input.artisanProfile.category !== undefined
+            ? { category: input.artisanProfile.category }
+            : {}),
+          ...(input.artisanProfile.styleTags !== undefined
+            ? { styleTags: normalizeCommaList(input.artisanProfile.styleTags) }
+            : {}),
+          ...(input.artisanProfile.serviceCategories !== undefined
+            ? { serviceCategories: normalizeCommaList(input.artisanProfile.serviceCategories) }
+            : {}),
+        },
+      });
+    }
+
+    return this.toProfile(user, role, artisanProfile);
+  }
+
+  async setAvatar(userId: number, avatarUrl: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+    });
+
+    const role = await this.resolvePrimaryRole(userId);
+    if (role === 'artisan') {
+      await this.prisma.artisanProfile.update({
+        where: { userId },
+        data: { heroImage: avatarUrl },
+      });
+    }
+
+    const artisanProfile =
+      role === 'artisan' ? await this.prisma.artisanProfile.findUnique({ where: { userId } }) : null;
+    return this.toProfile(user, role, artisanProfile);
+  }
+
+  private async toProfile(
+    user: {
+      id: number;
+      name: string;
+      email: string;
+      phone: string | null;
+      avatarUrl: string | null;
+      createdAt: Date;
+    },
+    role: MoeRole,
+    artisanProfile?: {
+      brandName: string | null;
+      heroImage: string | null;
+      about: string | null;
+      city: string | null;
+      state: string | null;
+      category: string | null;
+      styleTags: string | null;
+      serviceCategories: string | null;
+      estimatedDeliveryDays: number;
+      verified: boolean;
+      featured: boolean;
+      customOrdersEnabled: boolean;
+      rating: number;
+      reviewCount: number;
+    } | null,
+  ) {
     return {
       id: user.id,
       username: user.email.split('@')[0],
@@ -240,6 +360,29 @@ export class AuthService {
       email: user.email,
       phone: user.phone,
       avatarUrl: user.avatarUrl,
+      role,
+      ...(role === 'artisan'
+        ? {
+            artisanProfile: {
+              brandName: artisanProfile?.brandName ?? user.name,
+              about: artisanProfile?.about ?? null,
+              city: artisanProfile?.city ?? null,
+              state: artisanProfile?.state ?? null,
+              category: artisanProfile?.category ?? null,
+              styleTags: artisanProfile?.styleTags ? artisanProfile.styleTags.split(',') : [],
+              serviceCategories: artisanProfile?.serviceCategories
+                ? artisanProfile.serviceCategories.split(',')
+                : [],
+              heroImage: artisanProfile?.heroImage ?? user.avatarUrl ?? null,
+              verified: artisanProfile?.verified ?? false,
+              featured: artisanProfile?.featured ?? false,
+              estimatedDeliveryDays: artisanProfile?.estimatedDeliveryDays ?? 7,
+              customOrdersEnabled: artisanProfile?.customOrdersEnabled ?? false,
+              rating: artisanProfile?.rating ?? 0,
+              reviewCount: artisanProfile?.reviewCount ?? 0,
+            },
+          }
+        : {}),
       preferences: null,
       createdAt: user.createdAt.toISOString(),
     };

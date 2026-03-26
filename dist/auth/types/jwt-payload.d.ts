@@ -1,4 +1,4 @@
-export type MoeRole = 'customer' | 'provider' | 'admin';
+export type MoeRole = 'customer' | 'artisan' | 'admin';
 export type AccessTokenPayload = {
     sub: number;
     email: string;

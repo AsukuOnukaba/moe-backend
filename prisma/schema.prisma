@@ -19,6 +19,30 @@ model User {
 
   roles        UserRole[]
   refreshTokens RefreshToken[]
+
+  artisanProfile ArtisanProfile?
+  products        Product[]
+}
+
+model ArtisanProfile {
+  userId              Int      @id
+  brandName          String?
+  firstName          String?
+  lastName           String?
+  about               String?
+  city                String?
+  state               String?
+  category            String?
+  styleTags          String?
+  serviceCategories  String?
+  heroImage          String?
+  customOrdersEnabled Boolean @default(false)
+  verified           Boolean @default(false)
+  featured           Boolean @default(false)
+  estimatedDeliveryDays Int @default(7)
+  rating             Float    @default(0)
+  reviewCount        Int      @default(0)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Role {
@@ -56,6 +80,21 @@ model Product {
   originalPrice Float?
   currency      String   @default("NGN")
   imageUrl      String?
+  category      String?
+  materials     String?
+  tags           String?
+  providerId    Int
+
+  featured        Boolean @default(false)
+  isBestSeller    Boolean @default(false)
+  isTrending      Boolean @default(false)
+  isNewArrival    Boolean @default(false)
+  discountPercent Float?
+
+  estimatedDeliveryDays Int @default(7)
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  provider      User @relation(fields: [providerId], references: [id], onDelete: Cascade)
 }

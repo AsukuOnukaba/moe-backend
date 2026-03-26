@@ -3,4 +3,5 @@ export declare class AuthRegisterDto {
     email: string;
     password: string;
     phone?: string;
+    role?: 'customer' | 'artisan';
 }

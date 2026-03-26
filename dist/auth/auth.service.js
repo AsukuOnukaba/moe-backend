@@ -149,11 +149,12 @@ let AuthService = class AuthService {
         const names = roles.map((r) => r.role.name);
         if (names.includes('admin'))
             return 'admin';
-        if (names.includes('provider'))
-            return 'provider';
+        if (names.includes('artisan'))
+            return 'artisan';
         return 'customer';
     }
     async register(input) {
+        const role = (input.role ?? 'customer');
         const existing = await this.prisma.user.findUnique({
             where: { email: input.email.toLowerCase() },
         });
@@ -173,12 +174,20 @@ let AuthService = class AuthService {
                 phone: input.phone ?? null,
             },
         });
-        await this.ensureUserRole(user.id, 'customer');
-        const role = await this.resolvePrimaryRole(user.id);
+        await this.ensureUserRole(user.id, role);
+        if (role === 'artisan') {
+            await this.prisma.artisanProfile.create({
+                data: {
+                    userId: user.id,
+                    brandName: input.name,
+                    heroImage: null,
+                },
+            });
+        }
         const tokens = await this.issueTokens(user, role);
         return {
             ...tokens,
-            user: this.toCustomerProfile(user),
+            user: await this.toProfile(user, role),
         };
     }
     async login(input) {
@@ -196,7 +205,7 @@ let AuthService = class AuthService {
         const tokens = await this.issueTokens(user, role);
         return {
             ...tokens,
-            user: this.toCustomerProfile(user),
+            user: await this.toProfile(user, role),
         };
     }
     async refresh(refreshToken) {
@@ -238,9 +247,72 @@ let AuthService = class AuthService {
         if (!user) {
             throw new common_1.UnauthorizedException({ message: 'Unauthorized', code: 'AUTH_TOKEN_EXPIRED' });
         }
-        return this.toCustomerProfile(user);
+        const role = await this.resolvePrimaryRole(userId);
+        const artisanProfile = role === 'artisan' ? await this.prisma.artisanProfile.findUnique({ where: { userId } }) : null;
+        return this.toProfile(user, role, artisanProfile);
     }
-    toCustomerProfile(user) {
+    async patchProfile(userId, input) {
+        const role = await this.resolvePrimaryRole(userId);
+        const user = await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                ...(input.name !== undefined ? { name: input.name } : {}),
+                ...(input.phone !== undefined ? { phone: input.phone } : {}),
+            },
+        });
+        let artisanProfile = null;
+        if (role === 'artisan' && input.artisanProfile) {
+            const normalizeCommaList = (value) => {
+                if (value === undefined)
+                    return undefined;
+                if (value === null)
+                    return null;
+                return Array.isArray(value) ? value.join(',') : value;
+            };
+            artisanProfile = await this.prisma.artisanProfile.upsert({
+                where: { userId },
+                create: {
+                    userId,
+                    brandName: input.artisanProfile.brandName ?? user.name,
+                    heroImage: null,
+                },
+                update: {
+                    ...(input.artisanProfile.brandName !== undefined
+                        ? { brandName: input.artisanProfile.brandName }
+                        : {}),
+                    ...(input.artisanProfile.about !== undefined ? { about: input.artisanProfile.about } : {}),
+                    ...(input.artisanProfile.city !== undefined ? { city: input.artisanProfile.city } : {}),
+                    ...(input.artisanProfile.state !== undefined ? { state: input.artisanProfile.state } : {}),
+                    ...(input.artisanProfile.category !== undefined
+                        ? { category: input.artisanProfile.category }
+                        : {}),
+                    ...(input.artisanProfile.styleTags !== undefined
+                        ? { styleTags: normalizeCommaList(input.artisanProfile.styleTags) }
+                        : {}),
+                    ...(input.artisanProfile.serviceCategories !== undefined
+                        ? { serviceCategories: normalizeCommaList(input.artisanProfile.serviceCategories) }
+                        : {}),
+                },
+            });
+        }
+        return this.toProfile(user, role, artisanProfile);
+    }
+    async setAvatar(userId, avatarUrl) {
+        const user = await this.prisma.user.update({
+            where: { id: userId },
+            data: { avatarUrl },
+        });
+        const role = await this.resolvePrimaryRole(userId);
+        if (role === 'artisan') {
+            await this.prisma.artisanProfile.update({
+                where: { userId },
+                data: { heroImage: avatarUrl },
+            });
+        }
+        const artisanProfile = role === 'artisan' ? await this.prisma.artisanProfile.findUnique({ where: { userId } }) : null;
+        return this.toProfile(user, role, artisanProfile);
+    }
+    async toProfile(user, role, artisanProfile) {
         return {
             id: user.id,
             username: user.email.split('@')[0],
@@ -248,6 +320,29 @@ let AuthService = class AuthService {
             email: user.email,
             phone: user.phone,
             avatarUrl: user.avatarUrl,
+            role,
+            ...(role === 'artisan'
+                ? {
+                    artisanProfile: {
+                        brandName: artisanProfile?.brandName ?? user.name,
+                        about: artisanProfile?.about ?? null,
+                        city: artisanProfile?.city ?? null,
+                        state: artisanProfile?.state ?? null,
+                        category: artisanProfile?.category ?? null,
+                        styleTags: artisanProfile?.styleTags ? artisanProfile.styleTags.split(',') : [],
+                        serviceCategories: artisanProfile?.serviceCategories
+                            ? artisanProfile.serviceCategories.split(',')
+                            : [],
+                        heroImage: artisanProfile?.heroImage ?? user.avatarUrl ?? null,
+                        verified: artisanProfile?.verified ?? false,
+                        featured: artisanProfile?.featured ?? false,
+                        estimatedDeliveryDays: artisanProfile?.estimatedDeliveryDays ?? 7,
+                        customOrdersEnabled: artisanProfile?.customOrdersEnabled ?? false,
+                        rating: artisanProfile?.rating ?? 0,
+                        reviewCount: artisanProfile?.reviewCount ?? 0,
+                    },
+                }
+                : {}),
             preferences: null,
             createdAt: user.createdAt.toISOString(),
         };

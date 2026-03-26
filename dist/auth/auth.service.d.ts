@@ -1,6 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
+import type { MoeRole } from './types/jwt-payload';
 export declare class AuthService {
     private readonly prisma;
     private readonly jwt;
@@ -19,16 +20,34 @@ export declare class AuthService {
         email: string;
         password: string;
         phone?: string;
+        role?: 'customer' | 'artisan';
     }): Promise<{
         user: {
+            preferences: null;
+            createdAt: string;
+            artisanProfile?: {
+                brandName: string;
+                about: string | null;
+                city: string | null;
+                state: string | null;
+                category: string | null;
+                styleTags: string[];
+                serviceCategories: string[];
+                heroImage: string | null;
+                verified: boolean;
+                featured: boolean;
+                estimatedDeliveryDays: number;
+                customOrdersEnabled: boolean;
+                rating: number;
+                reviewCount: number;
+            } | undefined;
             id: number;
             username: string;
             name: string;
             email: string;
             phone: string | null;
             avatarUrl: string | null;
-            preferences: null;
-            createdAt: string;
+            role: MoeRole;
         };
         token: string;
         refreshToken: string;
@@ -38,14 +57,31 @@ export declare class AuthService {
         password: string;
     }): Promise<{
         user: {
+            preferences: null;
+            createdAt: string;
+            artisanProfile?: {
+                brandName: string;
+                about: string | null;
+                city: string | null;
+                state: string | null;
+                category: string | null;
+                styleTags: string[];
+                serviceCategories: string[];
+                heroImage: string | null;
+                verified: boolean;
+                featured: boolean;
+                estimatedDeliveryDays: number;
+                customOrdersEnabled: boolean;
+                rating: number;
+                reviewCount: number;
+            } | undefined;
             id: number;
             username: string;
             name: string;
             email: string;
             phone: string | null;
             avatarUrl: string | null;
-            preferences: null;
-            createdAt: string;
+            role: MoeRole;
         };
         token: string;
         refreshToken: string;
@@ -58,14 +94,97 @@ export declare class AuthService {
         success: boolean;
     }>;
     profile(userId: number): Promise<{
+        preferences: null;
+        createdAt: string;
+        artisanProfile?: {
+            brandName: string;
+            about: string | null;
+            city: string | null;
+            state: string | null;
+            category: string | null;
+            styleTags: string[];
+            serviceCategories: string[];
+            heroImage: string | null;
+            verified: boolean;
+            featured: boolean;
+            estimatedDeliveryDays: number;
+            customOrdersEnabled: boolean;
+            rating: number;
+            reviewCount: number;
+        } | undefined;
         id: number;
         username: string;
         name: string;
         email: string;
         phone: string | null;
         avatarUrl: string | null;
+        role: MoeRole;
+    }>;
+    patchProfile(userId: number, input: {
+        name?: string;
+        phone?: string | null;
+        artisanProfile?: {
+            brandName?: string;
+            about?: string | null;
+            city?: string | null;
+            state?: string | null;
+            category?: string | null;
+            styleTags?: string | string[] | null;
+            serviceCategories?: string | string[] | null;
+        };
+    }): Promise<{
         preferences: null;
         createdAt: string;
+        artisanProfile?: {
+            brandName: string;
+            about: string | null;
+            city: string | null;
+            state: string | null;
+            category: string | null;
+            styleTags: string[];
+            serviceCategories: string[];
+            heroImage: string | null;
+            verified: boolean;
+            featured: boolean;
+            estimatedDeliveryDays: number;
+            customOrdersEnabled: boolean;
+            rating: number;
+            reviewCount: number;
+        } | undefined;
+        id: number;
+        username: string;
+        name: string;
+        email: string;
+        phone: string | null;
+        avatarUrl: string | null;
+        role: MoeRole;
     }>;
-    private toCustomerProfile;
+    setAvatar(userId: number, avatarUrl: string): Promise<{
+        preferences: null;
+        createdAt: string;
+        artisanProfile?: {
+            brandName: string;
+            about: string | null;
+            city: string | null;
+            state: string | null;
+            category: string | null;
+            styleTags: string[];
+            serviceCategories: string[];
+            heroImage: string | null;
+            verified: boolean;
+            featured: boolean;
+            estimatedDeliveryDays: number;
+            customOrdersEnabled: boolean;
+            rating: number;
+            reviewCount: number;
+        } | undefined;
+        id: number;
+        username: string;
+        name: string;
+        email: string;
+        phone: string | null;
+        avatarUrl: string | null;
+        role: MoeRole;
+    }>;
+    private toProfile;
 }

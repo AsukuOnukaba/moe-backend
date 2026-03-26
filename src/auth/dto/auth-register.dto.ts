@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class AuthRegisterDto {
   @IsString()
@@ -15,5 +15,9 @@ export class AuthRegisterDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsIn(['customer', 'artisan'])
+  role?: 'customer' | 'artisan';
 }
 

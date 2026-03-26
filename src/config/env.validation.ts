@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  MinLength,
   Max,
   Min,
   validateSync,
@@ -23,6 +24,26 @@ class EnvVars {
   @IsOptional()
   @IsString()
   CORS_ORIGINS?: string;
+
+  @IsString()
+  @MinLength(1)
+  DATABASE_URL!: string;
+
+  @IsString()
+  @MinLength(10)
+  JWT_ACCESS_SECRET!: string;
+
+  @IsString()
+  @MinLength(10)
+  JWT_REFRESH_SECRET!: string;
+
+  @IsOptional()
+  @IsString()
+  JWT_ACCESS_EXPIRES_IN?: string;
+
+  @IsOptional()
+  @IsString()
+  JWT_REFRESH_EXPIRES_IN?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

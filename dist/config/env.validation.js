@@ -16,6 +16,11 @@ class EnvVars {
     PORT;
     NODE_ENV;
     CORS_ORIGINS;
+    DATABASE_URL;
+    JWT_ACCESS_SECRET;
+    JWT_REFRESH_SECRET;
+    JWT_ACCESS_EXPIRES_IN;
+    JWT_REFRESH_EXPIRES_IN;
 }
 __decorate([
     (0, class_validator_1.IsOptional)(),
@@ -34,6 +39,31 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], EnvVars.prototype, "CORS_ORIGINS", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], EnvVars.prototype, "DATABASE_URL", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(10),
+    __metadata("design:type", String)
+], EnvVars.prototype, "JWT_ACCESS_SECRET", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(10),
+    __metadata("design:type", String)
+], EnvVars.prototype, "JWT_REFRESH_SECRET", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], EnvVars.prototype, "JWT_ACCESS_EXPIRES_IN", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], EnvVars.prototype, "JWT_REFRESH_EXPIRES_IN", void 0);
 function validateEnv(config) {
     const validated = (0, class_transformer_1.plainToInstance)(EnvVars, config, {
         enableImplicitConversion: true,

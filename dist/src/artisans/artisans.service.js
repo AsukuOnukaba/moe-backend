@@ -229,6 +229,52 @@ let ArtisansService = class ArtisansService {
             originalPrice: p.originalPrice ?? null,
         };
     }
+    async getAll(page, pageSize, category) {
+        const safePage = Math.max(1, page ?? 1);
+        const safePageSize = Math.max(1, Math.min(100, pageSize ?? 20));
+        const where = {};
+        if (category) {
+            where.category = {
+                equals: category,
+                mode: 'insensitive',
+            };
+        }
+        const totalItems = await this.prisma.artisanProfile.count({ where });
+        const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
+        const artisans = await this.prisma.artisanProfile.findMany({
+            where,
+            skip: (safePage - 1) * safePageSize,
+            take: safePageSize,
+            orderBy: { rating: 'desc' },
+            include: {
+                user: true,
+            },
+        });
+        const data = artisans.map((a) => ({
+            id: a.userId,
+            name: a.user.name,
+            brandName: a.brandName ?? a.user.name,
+            businessName: a.businessName ?? null,
+            description: a.description ?? null,
+            location: a.location ?? null,
+            category: a.category ?? null,
+            images: a.images ?? [],
+            heroImage: a.heroImage ?? null,
+            rating: a.rating ?? 0,
+            reviewCount: a.reviewCount ?? 0,
+            verified: a.verified ?? false,
+            featured: a.featured ?? false,
+        }));
+        return {
+            data,
+            pagination: {
+                page: safePage,
+                pageSize: safePageSize,
+                totalPages,
+                totalItems,
+            },
+        };
+    }
 };
 exports.ArtisansService = ArtisansService;
 exports.ArtisansService = ArtisansService = __decorate([

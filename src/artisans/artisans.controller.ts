@@ -1,5 +1,24 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { randomUUID } from 'crypto';
+import multer from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { ArtisansService } from './artisans.service';
@@ -10,6 +29,17 @@ import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 @Controller('artisans')
 export class ArtisansController {
   constructor(private readonly artisans: ArtisansService) {}
+
+  @Get()
+  async getAll(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('category') category?: string,
+  ) {
+    const pageNum = page ? Number(page) : 1;
+    const sizeNum = pageSize ? Number(pageSize) : 20;
+    return this.artisans.getAll(pageNum, sizeNum, category);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
@@ -43,6 +73,34 @@ export class ArtisansController {
   async createProduct(@Req() req: Request, @Body() dto: CreateArtisanProductDto) {
     const user = req.user as AccessTokenPayload | undefined;
     return this.artisans.createProduct(user!, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/products/upload-image')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    }),
+  )
+  async uploadProductImage(
+    @Req() req: Request,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Missing file');
+    }
+
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
+    const filename = `${randomUUID()}${ext}`;
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'products');
+    await fs.mkdir(uploadsDir, { recursive: true });
+    const filePath = path.join(uploadsDir, filename);
+    await fs.writeFile(filePath, file.buffer);
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const imageUrl = `${baseUrl}/uploads/products/${filename}`;
+    return { imageUrl };
   }
 
   @UseGuards(JwtAuthGuard)

@@ -11,4 +11,10 @@ export declare class UpdateArtisanProfileDto {
     verified?: boolean;
     featured?: boolean;
     estimatedDeliveryDays?: number;
+    paymentSchedule?: string | null;
+    depositPercentage?: number | null;
+    refundPolicy?: string | null;
+    acceptedPaymentMethods?: string[];
+    installmentsAvailable?: boolean;
+    installmentDetails?: string | null;
 }

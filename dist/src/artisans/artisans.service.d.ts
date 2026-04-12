@@ -129,4 +129,27 @@ export declare class ArtisansService {
         success: boolean;
     }>;
     private toProductDto;
+    getAll(page?: number, pageSize?: number, category?: string): Promise<{
+        data: {
+            id: number;
+            name: string;
+            brandName: string;
+            businessName: string | null;
+            description: string | null;
+            location: string | null;
+            category: string | null;
+            images: string[];
+            heroImage: string | null;
+            rating: number;
+            reviewCount: number;
+            verified: boolean;
+            featured: boolean;
+        }[];
+        pagination: {
+            page: number;
+            pageSize: number;
+            totalPages: number;
+            totalItems: number;
+        };
+    }>;
 }

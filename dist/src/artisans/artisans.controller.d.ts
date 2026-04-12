@@ -6,6 +6,29 @@ import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 export declare class ArtisansController {
     private readonly artisans;
     constructor(artisans: ArtisansService);
+    getAll(page?: string, pageSize?: string, category?: string): Promise<{
+        data: {
+            id: number;
+            name: string;
+            brandName: string;
+            businessName: string | null;
+            description: string | null;
+            location: string | null;
+            category: string | null;
+            images: string[];
+            heroImage: string | null;
+            rating: number;
+            reviewCount: number;
+            verified: boolean;
+            featured: boolean;
+        }[];
+        pagination: {
+            page: number;
+            pageSize: number;
+            totalPages: number;
+            totalItems: number;
+        };
+    }>;
     getMe(req: Request): Promise<{
         id: number;
         brandName: string;
@@ -99,6 +122,9 @@ export declare class ArtisansController {
         isNewArrival: any;
         discountPercent: any;
         originalPrice: any;
+    }>;
+    uploadProductImage(req: Request, file: Express.Multer.File): Promise<{
+        imageUrl: string;
     }>;
     patchProduct(req: Request, id: string, dto: UpdateArtisanProductDto): Promise<{
         id: any;

@@ -124,6 +124,7 @@ export declare class AuthService {
     }>;
     patchProfile(userId: number, input: {
         name?: string;
+        email?: string;
         phone?: string | null;
         artisanProfile?: {
             brandName?: string;

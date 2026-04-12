@@ -15,40 +15,61 @@ type ShippingAddress = {
 };
 
 type Order = {
-  id: string;
+  id: number;
   customerId: number;
   productId: number;
-  productName: string;
-  productImage: string;
+  productName: string | null;
+  productImage: string | null;
   providerId: number | null;
-  providerName: string;
+  providerName: string | null;
   customizationId: number | null;
   isCustomOrder: boolean;
-  status: 'pending' | 'awaiting_payment' | 'in_progress' | 'completed' | 'cancelled';
-  price: number;
+  status: string;
+  price: number | null;
   currency: string;
   shippingAddress: ShippingAddress;
   paymentMethod: string;
   paymentReference: string | null;
-  paymentStatus: 'unpaid' | 'paid' | 'refunded';
+  paymentStatus: string;
   createdAt: string;
   updatedAt: string;
 };
-
-// TEMP: in-memory orders until DB models are added.
-const orderStore = new Map<number, Order[]>();
-let orderIdSeq = 1;
 
 @Injectable()
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private getOrdersForUser(userId: number) {
-    const existing = orderStore.get(userId);
-    if (existing) return existing;
-    const created: Order[] = [];
-    orderStore.set(userId, created);
-    return created;
+  private toOrderResponse(dbOrder: any): Order {
+    return {
+      id: dbOrder.id,
+      customerId: dbOrder.customerId,
+      productId: dbOrder.productId,
+      productName: dbOrder.productName,
+      productImage: dbOrder.productImage,
+      providerId: dbOrder.providerId,
+      providerName: dbOrder.providerName,
+      customizationId: dbOrder.customizationId,
+      isCustomOrder: dbOrder.isCustomOrder,
+      status: dbOrder.status,
+      price: dbOrder.price,
+      currency: dbOrder.currency,
+      shippingAddress: {
+        firstName: dbOrder.shippingFirstName || '',
+        lastName: dbOrder.shippingLastName || '',
+        phone: dbOrder.shippingPhone || '',
+        addressLine1: dbOrder.shippingAddressLine1 || '',
+        addressLine2: dbOrder.shippingAddressLine2,
+        city: dbOrder.shippingCity || '',
+        state: dbOrder.shippingState || '',
+        country: dbOrder.shippingCountry || '',
+        postalCode: dbOrder.shippingPostalCode,
+      },
+      paymentMethod: dbOrder.paymentMethod,
+      paymentReference: dbOrder.paymentReference,
+      paymentStatus: dbOrder.paymentStatus,
+      createdAt: dbOrder.createdAt.toISOString(),
+      updatedAt: dbOrder.updatedAt.toISOString(),
+    };
   }
 
   async list(user: AccessTokenPayload, query: any) {
@@ -58,25 +79,33 @@ export class OrdersService {
     const isCustomOrder =
       query?.isCustomOrder === 'true' ? true : query?.isCustomOrder === 'false' ? false : undefined;
 
-    let items = this.getOrdersForUser(user.sub);
-    if (status) items = items.filter((o) => o.status === status);
-    if (isCustomOrder !== undefined) items = items.filter((o) => o.isCustomOrder === isCustomOrder);
+    const where: any = { customerId: user.sub };
+    if (status) where.status = status;
+    if (isCustomOrder !== undefined) where.isCustomOrder = isCustomOrder;
 
-    const totalItems = items.length;
+    const totalItems = await this.prisma.order.count({ where });
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     const skip = (page - 1) * pageSize;
-    const pageItems = items.slice(skip, skip + pageSize);
+
+    const items = await this.prisma.order.findMany({
+      where,
+      skip,
+      take: pageSize,
+      orderBy: { createdAt: 'desc' },
+    });
 
     return {
-      data: pageItems,
+      data: items.map((item) => this.toOrderResponse(item)),
       pagination: { page, pageSize, totalPages, totalItems },
     };
   }
 
   async getById(user: AccessTokenPayload, orderId: string) {
-    const items = this.getOrdersForUser(user.sub);
-    const found = items.find((o) => o.id === orderId);
-    return found ?? null;
+    const dbOrder = await this.prisma.order.findUnique({
+      where: { id: Number(orderId) },
+    });
+    if (!dbOrder || dbOrder.customerId !== user.sub) return null;
+    return this.toOrderResponse(dbOrder);
   }
 
   async create(user: AccessTokenPayload, body: any) {
@@ -99,54 +128,57 @@ export class OrdersService {
       : null;
 
     const providerName = provider?.artisanProfile?.brandName ?? provider?.name ?? '';
-
     const shippingAddress: ShippingAddress = body?.shippingAddress ?? ({} as any);
 
-    const order: Order = {
-      id: `ORD-${orderIdSeq++}`,
-      customerId,
-      productId: product.id,
-      productName: product.name,
-      productImage: product.imageUrl ?? '',
-      providerId: product.providerId,
-      providerName,
-      customizationId: null,
-      isCustomOrder: false,
-      status: 'pending',
-      price: typeof first.finalPrice === 'number' ? first.finalPrice : product.price,
-      currency: body?.currency ?? product.currency ?? 'NGN',
-      shippingAddress,
-      paymentMethod: body?.paymentMethod ?? 'bank_transfer',
-      paymentReference: null,
-      paymentStatus: 'unpaid',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    // Create order and snapshot address fields
+    const dbOrder = await this.prisma.order.create({
+      data: {
+        customerId,
+        productId: product.id,
+        productName: product.name,
+        productImage: product.imageUrl,
+        providerId: product.providerId,
+        providerName,
+        customizationId: null,
+        isCustomOrder: false,
+        status: 'pending',
+        price: typeof first.finalPrice === 'number' ? first.finalPrice : product.price,
+        currency: body?.currency ?? product.currency ?? 'NGN',
+        shippingFirstName: shippingAddress.firstName,
+        shippingLastName: shippingAddress.lastName,
+        shippingPhone: shippingAddress.phone,
+        shippingAddressLine1: shippingAddress.addressLine1,
+        shippingAddressLine2: shippingAddress.addressLine2,
+        shippingCity: shippingAddress.city,
+        shippingState: shippingAddress.state,
+        shippingCountry: shippingAddress.country,
+        shippingPostalCode: shippingAddress.postalCode,
+        paymentMethod: body?.paymentMethod ?? 'bank_transfer',
+        paymentReference: null,
+        paymentStatus: 'unpaid',
+      },
+    });
 
-    const orders = this.getOrdersForUser(customerId);
-    orders.unshift(order);
-    return order;
+    return this.toOrderResponse(dbOrder);
   }
 
   async patch(user: AccessTokenPayload, orderId: string, body: any) {
-    const items = this.getOrdersForUser(user.sub);
-    const idx = items.findIndex((o) => o.id === orderId);
-    if (idx < 0) return null;
+    const dbOrder = await this.prisma.order.findUnique({
+      where: { id: Number(orderId) },
+    });
+    if (!dbOrder || dbOrder.customerId !== user.sub) return null;
 
-    const existing = items[idx];
-    const next: Order = {
-      ...existing,
-      ...(typeof body?.status === 'string' ? { status: body.status } : {}),
-      ...(typeof body?.paymentReference === 'string' ? { paymentReference: body.paymentReference } : {}),
-      ...(typeof body?.paymentStatus === 'string'
-        ? { paymentStatus: body.paymentStatus as Order['paymentStatus'] }
-        : {}),
-      ...(typeof body?.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
-      updatedAt: new Date().toISOString(),
-    };
+    const updated = await this.prisma.order.update({
+      where: { id: Number(orderId) },
+      data: {
+        ...(typeof body?.status === 'string' ? { status: body.status } : {}),
+        ...(typeof body?.paymentReference === 'string' ? { paymentReference: body.paymentReference } : {}),
+        ...(typeof body?.paymentStatus === 'string' ? { paymentStatus: body.paymentStatus } : {}),
+        ...(typeof body?.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
+      },
+    });
 
-    items[idx] = next;
-    return next;
+    return this.toOrderResponse(updated);
   }
 }
 

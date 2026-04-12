@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 import { HealthController } from './health/health.controller';
 import { ArtisansModule } from './artisans/artisans.module';
 import { ProductsModule } from './products/products.module';
@@ -35,6 +36,7 @@ import { CustomizationModule } from './customization/customization.module';
     }),
     DatabaseModule,
     AuthModule,
+    UsersModule,
     ArtisansModule,
     ProductsModule,
     ServiceProvidersModule,

@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class UpdateArtisanProfileDto {
   @IsOptional()
@@ -48,5 +48,30 @@ export class UpdateArtisanProfileDto {
   @IsOptional()
   @IsNumber()
   estimatedDeliveryDays?: number;
+
+  @IsOptional()
+  @IsString()
+  paymentSchedule?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  depositPercentage?: number | null;
+
+  @IsOptional()
+  @IsString()
+  refundPolicy?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  acceptedPaymentMethods?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  installmentsAvailable?: boolean;
+
+  @IsOptional()
+  @IsString()
+  installmentDetails?: string | null;
 }
 

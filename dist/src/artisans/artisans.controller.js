@@ -11,9 +11,17 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ArtisansController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
+const fs_1 = require("fs");
+const path_1 = __importDefault(require("path"));
+const crypto_1 = require("crypto");
+const multer_1 = __importDefault(require("multer"));
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const artisans_service_1 = require("./artisans.service");
 const update_artisan_profile_dto_1 = require("./dto/update-artisan-profile.dto");
@@ -23,6 +31,11 @@ let ArtisansController = class ArtisansController {
     artisans;
     constructor(artisans) {
         this.artisans = artisans;
+    }
+    async getAll(page, pageSize, category) {
+        const pageNum = page ? Number(page) : 1;
+        const sizeNum = pageSize ? Number(pageSize) : 20;
+        return this.artisans.getAll(pageNum, sizeNum, category);
     }
     async getMe(req) {
         const user = req.user;
@@ -42,6 +55,20 @@ let ArtisansController = class ArtisansController {
         const user = req.user;
         return this.artisans.createProduct(user, dto);
     }
+    async uploadProductImage(req, file) {
+        if (!file) {
+            throw new common_1.BadRequestException('Missing file');
+        }
+        const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
+        const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
+        const uploadsDir = path_1.default.join(process.cwd(), 'uploads', 'products');
+        await fs_1.promises.mkdir(uploadsDir, { recursive: true });
+        const filePath = path_1.default.join(uploadsDir, filename);
+        await fs_1.promises.writeFile(filePath, file.buffer);
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const imageUrl = `${baseUrl}/uploads/products/${filename}`;
+        return { imageUrl };
+    }
     async patchProduct(req, id, dto) {
         const user = req.user;
         return this.artisans.patchProduct(user, Number(id), dto);
@@ -52,6 +79,15 @@ let ArtisansController = class ArtisansController {
     }
 };
 exports.ArtisansController = ArtisansController;
+__decorate([
+    (0, common_1.Get)(),
+    __param(0, (0, common_1.Query)('page')),
+    __param(1, (0, common_1.Query)('pageSize')),
+    __param(2, (0, common_1.Query)('category')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], ArtisansController.prototype, "getAll", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Get)('me'),
@@ -88,6 +124,19 @@ __decorate([
     __metadata("design:paramtypes", [Object, create_artisan_product_dto_1.CreateArtisanProductDto]),
     __metadata("design:returntype", Promise)
 ], ArtisansController.prototype, "createProduct", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Post)('me/products/upload-image'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
+        storage: multer_1.default.memoryStorage(),
+        limits: { fileSize: 10 * 1024 * 1024 },
+    })),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ArtisansController.prototype, "uploadProductImage", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Patch)('me/products/:id'),

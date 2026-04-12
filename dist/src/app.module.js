@@ -16,6 +16,7 @@ const app_service_1 = require("./app.service");
 const env_validation_1 = require("./config/env.validation");
 const database_module_1 = require("./database/database.module");
 const auth_module_1 = require("./auth/auth.module");
+const users_module_1 = require("./users/users.module");
 const health_controller_1 = require("./health/health.controller");
 const artisans_module_1 = require("./artisans/artisans.module");
 const products_module_1 = require("./products/products.module");
@@ -47,6 +48,7 @@ exports.AppModule = AppModule = __decorate([
             }),
             database_module_1.DatabaseModule,
             auth_module_1.AuthModule,
+            users_module_1.UsersModule,
             artisans_module_1.ArtisansModule,
             products_module_1.ProductsModule,
             service_providers_module_1.ServiceProvidersModule,

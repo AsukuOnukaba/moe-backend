@@ -257,6 +257,7 @@ let AuthService = class AuthService {
             where: { id: userId },
             data: {
                 ...(input.name !== undefined ? { name: input.name } : {}),
+                ...(input.email !== undefined ? { email: input.email } : {}),
                 ...(input.phone !== undefined ? { phone: input.phone } : {}),
             },
         });

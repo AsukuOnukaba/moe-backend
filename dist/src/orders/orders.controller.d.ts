@@ -5,17 +5,17 @@ export declare class OrdersController {
     constructor(orders: OrdersService);
     list(req: Request, query: any): Promise<{
         data: {
-            id: string;
+            id: number;
             customerId: number;
             productId: number;
-            productName: string;
-            productImage: string;
+            productName: string | null;
+            productImage: string | null;
             providerId: number | null;
-            providerName: string;
+            providerName: string | null;
             customizationId: number | null;
             isCustomOrder: boolean;
-            status: "pending" | "awaiting_payment" | "in_progress" | "completed" | "cancelled";
-            price: number;
+            status: string;
+            price: number | null;
             currency: string;
             shippingAddress: {
                 firstName: string;
@@ -30,7 +30,7 @@ export declare class OrdersController {
             };
             paymentMethod: string;
             paymentReference: string | null;
-            paymentStatus: "unpaid" | "paid" | "refunded";
+            paymentStatus: string;
             createdAt: string;
             updatedAt: string;
         }[];
@@ -42,17 +42,17 @@ export declare class OrdersController {
         };
     }>;
     get(req: Request, id: string): Promise<{
-        id: string;
+        id: number;
         customerId: number;
         productId: number;
-        productName: string;
-        productImage: string;
+        productName: string | null;
+        productImage: string | null;
         providerId: number | null;
-        providerName: string;
+        providerName: string | null;
         customizationId: number | null;
         isCustomOrder: boolean;
-        status: "pending" | "awaiting_payment" | "in_progress" | "completed" | "cancelled";
-        price: number;
+        status: string;
+        price: number | null;
         currency: string;
         shippingAddress: {
             firstName: string;
@@ -67,22 +67,22 @@ export declare class OrdersController {
         };
         paymentMethod: string;
         paymentReference: string | null;
-        paymentStatus: "unpaid" | "paid" | "refunded";
+        paymentStatus: string;
         createdAt: string;
         updatedAt: string;
     } | null>;
     create(req: Request, body: any): Promise<{
-        id: string;
+        id: number;
         customerId: number;
         productId: number;
-        productName: string;
-        productImage: string;
+        productName: string | null;
+        productImage: string | null;
         providerId: number | null;
-        providerName: string;
+        providerName: string | null;
         customizationId: number | null;
         isCustomOrder: boolean;
-        status: "pending" | "awaiting_payment" | "in_progress" | "completed" | "cancelled";
-        price: number;
+        status: string;
+        price: number | null;
         currency: string;
         shippingAddress: {
             firstName: string;
@@ -97,7 +97,7 @@ export declare class OrdersController {
         };
         paymentMethod: string;
         paymentReference: string | null;
-        paymentStatus: "unpaid" | "paid" | "refunded";
+        paymentStatus: string;
         createdAt: string;
         updatedAt: string;
     } | {
@@ -105,17 +105,17 @@ export declare class OrdersController {
         code: string;
     }>;
     patch(req: Request, id: string, body: any): Promise<{
-        id: string;
+        id: number;
         customerId: number;
         productId: number;
-        productName: string;
-        productImage: string;
+        productName: string | null;
+        productImage: string | null;
         providerId: number | null;
-        providerName: string;
+        providerName: string | null;
         customizationId: number | null;
         isCustomOrder: boolean;
-        status: "pending" | "awaiting_payment" | "in_progress" | "completed" | "cancelled";
-        price: number;
+        status: string;
+        price: number | null;
         currency: string;
         shippingAddress: {
             firstName: string;
@@ -130,7 +130,7 @@ export declare class OrdersController {
         };
         paymentMethod: string;
         paymentReference: string | null;
-        paymentStatus: "unpaid" | "paid" | "refunded";
+        paymentStatus: string;
         createdAt: string;
         updatedAt: string;
     } | null>;

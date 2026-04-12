@@ -9,6 +9,7 @@ declare class ArtisanProfilePatchDto {
 }
 export declare class AuthProfilePatchDto {
     name?: string;
+    email?: string;
     phone?: string | null;
     artisanProfile?: ArtisanProfilePatchDto;
 }

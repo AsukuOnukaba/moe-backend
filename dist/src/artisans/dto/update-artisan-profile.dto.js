@@ -24,6 +24,12 @@ class UpdateArtisanProfileDto {
     verified;
     featured;
     estimatedDeliveryDays;
+    paymentSchedule;
+    depositPercentage;
+    refundPolicy;
+    acceptedPaymentMethods;
+    installmentsAvailable;
+    installmentDetails;
 }
 exports.UpdateArtisanProfileDto = UpdateArtisanProfileDto;
 __decorate([
@@ -86,4 +92,35 @@ __decorate([
     (0, class_validator_1.IsNumber)(),
     __metadata("design:type", Number)
 ], UpdateArtisanProfileDto.prototype, "estimatedDeliveryDays", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "paymentSchedule", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "depositPercentage", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "refundPolicy", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], UpdateArtisanProfileDto.prototype, "acceptedPaymentMethods", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateArtisanProfileDto.prototype, "installmentsAvailable", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "installmentDetails", void 0);
 //# sourceMappingURL=update-artisan-profile.dto.js.map

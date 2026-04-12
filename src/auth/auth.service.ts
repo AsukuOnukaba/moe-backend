@@ -249,6 +249,7 @@ export class AuthService {
     userId: number,
     input: {
       name?: string;
+      email?: string;
       phone?: string | null;
       artisanProfile?: {
         brandName?: string;
@@ -267,6 +268,7 @@ export class AuthService {
       where: { id: userId },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.email !== undefined ? { email: input.email } : {}),
         ...(input.phone !== undefined ? { phone: input.phone } : {}),
       },
     });

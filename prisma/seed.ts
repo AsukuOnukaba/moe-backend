@@ -1,10 +1,21 @@
-// FILE: prisma/seed.ts
-// Run with: npx ts-node prisma/seed.ts
-// Or add to package.json: "prisma": { "seed": "ts-node prisma/seed.ts" }
-// Then run: npx prisma db seed
-
 import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { hash } from 'bcryptjs';
+
+// ===============================================
+// TEST CREDENTIALS FOR LOCAL DEVELOPMENT
+// ===============================================
+// Artisan Accounts (Password: Password123!)
+//   adaobi@moe.com    (Adaobi Couture - Tailoring)
+//   emeka@moe.com     (Emeka Leather Crafts - Leatherwork)
+//   fatima@moe.com    (Fatima Arts Studio - Canvas)
+//   chidinma@moe.com  (Chidinma Beads & Jewelry - Jewelry)
+//   seun@moe.com      (Seun Woodworks - Woodworking)
+//
+// Customer Accounts (Password: Password123!)
+//   john@customer.com
+//   jane@customer.com
+//   ada@customer.com
+// ===============================================
 
 const prisma = new PrismaClient();
 

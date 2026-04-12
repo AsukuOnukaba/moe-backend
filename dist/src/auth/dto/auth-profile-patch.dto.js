@@ -60,6 +60,7 @@ __decorate([
 ], ArtisanProfilePatchDto.prototype, "serviceCategories", void 0);
 class AuthProfilePatchDto {
     name;
+    email;
     phone;
     artisanProfile;
 }
@@ -69,6 +70,11 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], AuthProfilePatchDto.prototype, "name", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEmail)(),
+    __metadata("design:type", String)
+], AuthProfilePatchDto.prototype, "email", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),

@@ -8,46 +8,63 @@ datasource db {
 }
 
 model User {
-  id           Int            @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   name         String
-  email        String         @unique
+  email        String   @unique
   passwordHash String
   phone        String?
   avatarUrl    String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  addressLine1 String?
+  city         String?
+  state        String?
+  country      String?
+  postalCode   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  roles        UserRole[]
+  roles         UserRole[]
   refreshTokens RefreshToken[]
 
   artisanProfile ArtisanProfile?
-  products        Product[]
+  products       Product[]
 }
 
 model ArtisanProfile {
-  userId              Int      @id
-  brandName          String?
-  firstName          String?
-  lastName           String?
-  about               String?
-  city                String?
-  state               String?
-  category            String?
-  styleTags          String?
-  serviceCategories  String?
-  heroImage          String?
+  userId Int  @id @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  brandName         String?
+  businessName      String?
+  firstName         String?
+  lastName          String?
+  about             String?
+  description       String?
+  city              String?
+  state             String?
+  location          String?
+  category          String?
+  styleTags         String?
+  serviceCategories String?
+  heroImage         String?
+  images            String[]
+
   customOrdersEnabled Boolean @default(false)
-  verified           Boolean @default(false)
-  featured           Boolean @default(false)
-  estimatedDeliveryDays Int @default(7)
-  rating             Float    @default(0)
-  reviewCount        Int      @default(0)
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verified            Boolean @default(false)
+  featured            Boolean @default(false)
+
+  estimatedDeliveryDays Int   @default(7)
+  rating                Float @default(0)
+  reviewCount           Int   @default(0)
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model Role {
-  id    Int      @id @default(autoincrement())
-  name  String   @unique
+  id    Int        @id @default(autoincrement())
+  name  String     @unique
   users UserRole[]
 }
 
@@ -62,11 +79,11 @@ model UserRole {
 }
 
 model RefreshToken {
-  id        Int      @id @default(autoincrement())
-  jti       String   @unique
+  id        Int       @id @default(autoincrement())
+  jti       String    @unique
   userId    Int
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   expiresAt DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -76,14 +93,23 @@ model Product {
   id            Int      @id @default(autoincrement())
   name          String
   description   String?
-  price         Float
+  category      String?
+  price         Float?
+  priceMin      Float?
+  priceMax      Float?
   originalPrice Float?
   currency      String   @default("NGN")
   imageUrl      String?
-  category      String?
+  images        String[]
   materials     String?
-  tags           String?
-  providerId    Int
+  tags          String?
+  status        String   @default("ACTIVE")
+
+  providerId Int?
+  provider   User? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  artisanId Int?
+  artisan   ArtisanProfile? @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
 
   featured        Boolean @default(false)
   isBestSeller    Boolean @default(false)
@@ -93,8 +119,10 @@ model Product {
 
   estimatedDeliveryDays Int @default(7)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  provider      User @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@index([providerId])
+  @@index([artisanId])
+  @@index([category])
 }

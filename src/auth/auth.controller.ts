@@ -21,6 +21,8 @@ import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRegisterDto } from './dto/auth-register.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
 import { AuthProfilePatchDto } from './dto/auth-profile-patch.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AccessTokenPayload } from './types/jwt-payload';
 
@@ -90,6 +92,26 @@ export class AuthController {
   async logout(@Req() req: Request) {
     const user = req.user as AccessTokenPayload | undefined;
     return this.auth.logoutAll(user!.sub);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @Req() req: Request,
+    @Body() dto: UpdateUserProfileDto,
+  ) {
+    const user = req.user as AccessTokenPayload | undefined;
+    return this.auth.updateProfile(user!.sub, dto);
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Req() req: Request,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    const user = req.user as AccessTokenPayload | undefined;
+    return this.auth.changePassword(user!.sub, dto);
   }
 }
 

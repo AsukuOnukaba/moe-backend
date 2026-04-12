@@ -10,6 +10,8 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload, MoeRole, RefreshTokenPayload } from './types/jwt-payload';
 import type { ErrorCode } from '../common/errors/error-codes';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 function authError(message: string, code: ErrorCode): UnauthorizedException {
   return new UnauthorizedException({ message, code });
@@ -386,6 +388,49 @@ export class AuthService {
       preferences: null,
       createdAt: user.createdAt.toISOString(),
     };
+  }
+
+  async updateProfile(userId: number, dto: UpdateUserProfileDto) {
+    const data = Object.fromEntries(
+      Object.entries(dto).filter(([_, v]) => v !== undefined),
+    );
+
+    if (Object.keys(data).length === 0) {
+      return this.prisma.user.findUnique({ where: { id: userId } });
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+
+    // Strip passwordHash from response
+    const { passwordHash: _, ...result } = user as any;
+    return result;
+  }
+
+  async changePassword(userId: number, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    const isMatch = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    const hash = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: hash },
+    });
+
+    return { message: 'Password updated successfully' };
   }
 }
 

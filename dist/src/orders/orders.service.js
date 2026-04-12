@@ -62,10 +62,12 @@ let OrdersService = class OrdersService {
         const product = await this.prisma.product.findUnique({ where: { id: productId } });
         if (!product)
             return { message: 'Product not found', code: 'RESOURCE_NOT_FOUND' };
-        const provider = await this.prisma.user.findUnique({
-            where: { id: product.providerId },
-            include: { artisanProfile: true },
-        });
+        const provider = product.providerId
+            ? await this.prisma.user.findUnique({
+                where: { id: product.providerId },
+                include: { artisanProfile: true },
+            })
+            : null;
         const providerName = provider?.artisanProfile?.brandName ?? provider?.name ?? '';
         const shippingAddress = body?.shippingAddress ?? {};
         const order = {

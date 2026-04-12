@@ -8,7 +8,7 @@ export declare class WishlistController {
         customerId: number;
         productId: number;
         productName: string;
-        providerId: number;
+        providerId: number | null;
         providerName: string;
         priceMin: number;
         priceMax: number;
@@ -23,7 +23,7 @@ export declare class WishlistController {
         customerId: number;
         productId: number;
         productName: string;
-        providerId: number;
+        providerId: number | null;
         providerName: string;
         priceMin: number;
         priceMax: number;

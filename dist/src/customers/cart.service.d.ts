@@ -4,7 +4,7 @@ type CartItem = {
     id: string;
     productId: number;
     productName: string;
-    providerId: number;
+    providerId: number | null;
     providerName: string;
     basePrice: number;
     finalPrice: number;

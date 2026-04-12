@@ -17,7 +17,7 @@ type Order = {
     productId: number;
     productName: string;
     productImage: string;
-    providerId: number;
+    providerId: number | null;
     providerName: string;
     customizationId: number | null;
     isCustomOrder: boolean;

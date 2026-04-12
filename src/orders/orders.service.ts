@@ -20,7 +20,7 @@ type Order = {
   productId: number;
   productName: string;
   productImage: string;
-  providerId: number;
+  providerId: number | null;
   providerName: string;
   customizationId: number | null;
   isCustomOrder: boolean;
@@ -91,10 +91,12 @@ export class OrdersService {
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
     if (!product) return { message: 'Product not found', code: 'RESOURCE_NOT_FOUND' };
 
-    const provider = await this.prisma.user.findUnique({
-      where: { id: product.providerId },
-      include: { artisanProfile: true },
-    });
+    const provider = product.providerId
+      ? await this.prisma.user.findUnique({
+          where: { id: product.providerId },
+          include: { artisanProfile: true },
+        })
+      : null;
 
     const providerName = provider?.artisanProfile?.brandName ?? provider?.name ?? '';
 

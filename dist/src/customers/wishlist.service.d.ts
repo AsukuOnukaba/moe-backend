@@ -5,7 +5,7 @@ type WishlistItem = {
     customerId: number;
     productId: number;
     productName: string;
-    providerId: number;
+    providerId: number | null;
     providerName: string;
     priceMin: number;
     priceMax: number;

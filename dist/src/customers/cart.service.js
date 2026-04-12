@@ -43,10 +43,12 @@ let CartService = class CartService {
         const p = await this.prisma.product.findUnique({ where: { id: productId } });
         if (!p)
             return { message: 'Product not found', code: 'RESOURCE_NOT_FOUND' };
-        const provider = await this.prisma.user.findUnique({
-            where: { id: p.providerId },
-            include: { artisanProfile: true },
-        });
+        const provider = p.providerId
+            ? await this.prisma.user.findUnique({
+                where: { id: p.providerId },
+                include: { artisanProfile: true },
+            })
+            : null;
         const basePrice = typeof body?.basePrice === 'number' ? body.basePrice : p.price;
         const finalPrice = typeof body?.finalPrice === 'number' ? body.finalPrice : basePrice;
         const item = {

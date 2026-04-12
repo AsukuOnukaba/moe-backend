@@ -7,7 +7,7 @@ export declare class CartController {
         id: string;
         productId: number;
         productName: string;
-        providerId: number;
+        providerId: number | null;
         providerName: string;
         basePrice: number;
         finalPrice: number;
@@ -23,7 +23,7 @@ export declare class CartController {
         id: string;
         productId: number;
         productName: string;
-        providerId: number;
+        providerId: number | null;
         providerName: string;
         basePrice: number;
         finalPrice: number;
@@ -42,7 +42,7 @@ export declare class CartController {
         id: string;
         productId: number;
         productName: string;
-        providerId: number;
+        providerId: number | null;
         providerName: string;
         basePrice: number;
         finalPrice: number;

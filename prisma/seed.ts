@@ -123,7 +123,7 @@ async function main() {
   });
 
   for (const artisan of ARTISANS) {
-    const hashedPassword = await bcrypt.hash('Password123!', 12);
+    const hashedPassword = await hash('Password123!', 12);
 
     const user = await prisma.user.create({
       data: {

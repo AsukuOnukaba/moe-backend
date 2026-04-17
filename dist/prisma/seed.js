@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const client_1 = require("@prisma/client");
+const bcryptjs_1 = require("bcryptjs");
 const prisma = new client_1.PrismaClient();
 const ARTISANS = [
     {
@@ -102,7 +103,7 @@ async function main() {
         create: { name: 'artisan' },
     });
     for (const artisan of ARTISANS) {
-        const hashedPassword = await bcrypt.hash('Password123!', 12);
+        const hashedPassword = await (0, bcryptjs_1.hash)('Password123!', 12);
         const user = await prisma.user.create({
             data: {
                 name: artisan.name,

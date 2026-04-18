@@ -7,7 +7,23 @@ export class UpdateArtisanProfileDto {
 
   @IsOptional()
   @IsString()
+  businessName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsString()
   about?: string | null;
+
+  @IsOptional()
+  @IsString()
+  country?: string | null;
+
+  @IsOptional()
+  @IsString()
+  address?: string | null;
 
   @IsOptional()
   @IsString()
@@ -32,6 +48,15 @@ export class UpdateArtisanProfileDto {
   @IsOptional()
   @IsString()
   heroImage?: string | null;
+
+  @IsOptional()
+  @IsString()
+  storeImageUrl?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[] | null;
 
   @IsOptional()
   @IsBoolean()

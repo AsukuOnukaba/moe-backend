@@ -1,8 +1,11 @@
 import type { Request } from 'express';
 import { PaymentsService } from './payments.service';
+import { PaymentMethodsService } from './payment-methods.service';
+import { CreatePaymentMethodDto } from './dto/create-payment-method.dto';
 export declare class PaymentsController {
     private readonly payments;
-    constructor(payments: PaymentsService);
+    private readonly paymentMethods;
+    constructor(payments: PaymentsService, paymentMethods: PaymentMethodsService);
     initialize(req: Request, body: any): Promise<{
         message: string;
         code: string;
@@ -42,4 +45,11 @@ export declare class PaymentsController {
         message?: undefined;
         code?: undefined;
     }>;
+    listPaymentMethods(req: Request): Promise<{
+        data: import("./dto/payment-method.dto").PaymentMethodDto[];
+        total: number;
+    }>;
+    createPaymentMethod(req: Request, dto: CreatePaymentMethodDto): Promise<import("./dto/payment-method.dto").PaymentMethodDto>;
+    deletePaymentMethod(req: Request, id: string): Promise<void>;
+    setDefaultPaymentMethod(req: Request, id: string): Promise<import("./dto/payment-method.dto").PaymentMethodDto>;
 }

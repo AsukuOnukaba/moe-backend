@@ -126,6 +126,9 @@ export declare class ArtisansController {
     uploadProductImage(req: Request, file: Express.Multer.File): Promise<{
         imageUrl: string;
     }>;
+    uploadProfileImage(req: Request, file: Express.Multer.File): Promise<{
+        url: string;
+    }>;
     patchProduct(req: Request, id: string, dto: UpdateArtisanProductDto): Promise<{
         id: any;
         name: any;

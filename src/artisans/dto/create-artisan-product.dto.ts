@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -22,8 +22,9 @@ export class CreateArtisanProductDto {
   currency?: string;
 
   @IsOptional()
-  @IsString()
-  imageUrl?: string | null;
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[] | null;
 
   @IsOptional()
   @IsString()

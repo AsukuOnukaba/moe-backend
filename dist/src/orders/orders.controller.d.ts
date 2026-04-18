@@ -34,12 +34,7 @@ export declare class OrdersController {
             createdAt: string;
             updatedAt: string;
         }[];
-        pagination: {
-            page: number;
-            pageSize: number;
-            totalPages: number;
-            totalItems: number;
-        };
+        total: number;
     }>;
     get(req: Request, id: string): Promise<{
         id: number;

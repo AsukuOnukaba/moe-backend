@@ -96,7 +96,7 @@ export class OrdersService {
 
     return {
       data: items.map((item) => this.toOrderResponse(item)),
-      pagination: { page, pageSize, totalPages, totalItems },
+      total: totalItems,
     };
   }
 

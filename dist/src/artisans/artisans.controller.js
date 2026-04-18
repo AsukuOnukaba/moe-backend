@@ -69,6 +69,20 @@ let ArtisansController = class ArtisansController {
         const imageUrl = `${baseUrl}/uploads/products/${filename}`;
         return { imageUrl };
     }
+    async uploadProfileImage(req, file) {
+        if (!file) {
+            throw new common_1.BadRequestException({ message: 'No file provided' });
+        }
+        const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
+        const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
+        const uploadsDir = path_1.default.join(process.cwd(), 'uploads', 'artisans');
+        await fs_1.promises.mkdir(uploadsDir, { recursive: true });
+        const filePath = path_1.default.join(uploadsDir, filename);
+        await fs_1.promises.writeFile(filePath, file.buffer);
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const url = `${baseUrl}/uploads/artisans/${filename}`;
+        return { url };
+    }
     async patchProduct(req, id, dto) {
         const user = req.user;
         return this.artisans.patchProduct(user, Number(id), dto);
@@ -137,6 +151,28 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], ArtisansController.prototype, "uploadProductImage", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Post)('me/upload-image'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
+        storage: multer_1.default.memoryStorage(),
+        limits: { fileSize: 5 * 1024 * 1024 },
+        fileFilter: (req, file, callback) => {
+            const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!allowedMimes.includes(file.mimetype)) {
+                return callback(new common_1.BadRequestException({
+                    message: 'Unsupported file type. Upload a JPEG, PNG, or WebP image.',
+                }));
+            }
+            callback(null, true);
+        },
+    })),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], ArtisansController.prototype, "uploadProfileImage", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Patch)('me/products/:id'),

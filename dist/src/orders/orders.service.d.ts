@@ -37,12 +37,7 @@ export declare class OrdersService {
     private toOrderResponse;
     list(user: AccessTokenPayload, query: any): Promise<{
         data: Order[];
-        pagination: {
-            page: number;
-            pageSize: number;
-            totalPages: number;
-            totalItems: number;
-        };
+        total: number;
     }>;
     getById(user: AccessTokenPayload, orderId: string): Promise<Order | null>;
     create(user: AccessTokenPayload, body: any): Promise<Order | {

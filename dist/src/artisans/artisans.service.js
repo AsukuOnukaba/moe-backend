@@ -71,11 +71,20 @@ let ArtisansService = class ArtisansService {
             create: {
                 userId,
                 brandName: dto.brandName ?? undefined,
+                businessName: dto.businessName ?? undefined,
+                description: dto.description ?? undefined,
                 heroImage: dto.heroImage ?? null,
+                storeImageUrl: dto.storeImageUrl ?? null,
+                country: dto.country ?? undefined,
+                address: dto.address ?? undefined,
             },
             update: {
                 ...(dto.brandName !== undefined ? { brandName: dto.brandName } : {}),
+                ...(dto.businessName !== undefined ? { businessName: dto.businessName } : {}),
+                ...(dto.description !== undefined ? { description: dto.description } : {}),
                 ...(dto.about !== undefined ? { about: dto.about } : {}),
+                ...(dto.country !== undefined ? { country: dto.country } : {}),
+                ...(dto.address !== undefined ? { address: dto.address } : {}),
                 ...(dto.city !== undefined ? { city: dto.city } : {}),
                 ...(dto.state !== undefined ? { state: dto.state } : {}),
                 ...(dto.category !== undefined ? { category: dto.category } : {}),
@@ -84,6 +93,8 @@ let ArtisansService = class ArtisansService {
                     ? { serviceCategories: dto.serviceCategories }
                     : {}),
                 ...(dto.heroImage !== undefined ? { heroImage: dto.heroImage } : {}),
+                ...(dto.storeImageUrl !== undefined ? { storeImageUrl: dto.storeImageUrl } : {}),
+                ...(dto.images !== undefined ? { images: dto.images } : {}),
                 ...(dto.customOrdersEnabled !== undefined
                     ? { customOrdersEnabled: dto.customOrdersEnabled }
                     : {}),
@@ -151,7 +162,7 @@ let ArtisansService = class ArtisansService {
                 price: dto.price,
                 originalPrice: dto.originalPrice ?? null,
                 currency: dto.currency ?? 'NGN',
-                imageUrl: dto.imageUrl ?? null,
+                images: dto.images ?? [],
                 category: dto.category ?? null,
                 materials: dto.materials ?? null,
                 tags: dto.tags ?? null,
@@ -181,7 +192,7 @@ let ArtisansService = class ArtisansService {
                 ...(dto.price !== undefined ? { price: dto.price } : {}),
                 ...(dto.originalPrice !== undefined ? { originalPrice: dto.originalPrice } : {}),
                 ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
-                ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl } : {}),
+                ...(dto.images !== undefined ? { images: dto.images ?? [] } : {}),
                 ...(dto.category !== undefined ? { category: dto.category } : {}),
                 ...(dto.materials !== undefined ? { materials: dto.materials } : {}),
                 ...(dto.tags !== undefined ? { tags: dto.tags } : {}),

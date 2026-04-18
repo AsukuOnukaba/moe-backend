@@ -17,7 +17,7 @@ class CreateArtisanProductDto {
     price;
     originalPrice;
     currency;
-    imageUrl;
+    images;
     category;
     materials;
     tags;
@@ -56,9 +56,10 @@ __decorate([
 ], CreateArtisanProductDto.prototype, "currency", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
     __metadata("design:type", Object)
-], CreateArtisanProductDto.prototype, "imageUrl", void 0);
+], CreateArtisanProductDto.prototype, "images", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),

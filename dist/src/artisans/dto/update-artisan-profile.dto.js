@@ -13,13 +13,19 @@ exports.UpdateArtisanProfileDto = void 0;
 const class_validator_1 = require("class-validator");
 class UpdateArtisanProfileDto {
     brandName;
+    businessName;
+    description;
     about;
+    country;
+    address;
     city;
     state;
     category;
     styleTags;
     serviceCategories;
     heroImage;
+    storeImageUrl;
+    images;
     customOrdersEnabled;
     verified;
     featured;
@@ -41,7 +47,27 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "businessName", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "description", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
 ], UpdateArtisanProfileDto.prototype, "about", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "country", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "address", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
@@ -72,6 +98,17 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", Object)
 ], UpdateArtisanProfileDto.prototype, "heroImage", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "storeImageUrl", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Object)
+], UpdateArtisanProfileDto.prototype, "images", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),

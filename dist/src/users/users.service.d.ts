@@ -13,25 +13,28 @@ export declare class UsersService {
         createdAt: Date;
         updatedAt: Date;
         userId: number;
+        country: string;
         city: string;
         state: string;
         addressLine1: string;
-        country: string;
         postalCode: string | null;
         isDefault: boolean;
     }>;
     getAddresses(userId: number): Promise<{
-        id: number;
-        createdAt: Date;
-        updatedAt: Date;
-        userId: number;
-        city: string;
-        state: string;
-        addressLine1: string;
-        country: string;
-        postalCode: string | null;
-        isDefault: boolean;
-    }[]>;
+        data: {
+            id: number;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: number;
+            country: string;
+            city: string;
+            state: string;
+            addressLine1: string;
+            postalCode: string | null;
+            isDefault: boolean;
+        }[];
+        total: number;
+    }>;
     updateAddress(userId: number, addressId: number, data: {
         addressLine1?: string;
         city?: string;
@@ -43,10 +46,10 @@ export declare class UsersService {
         createdAt: Date;
         updatedAt: Date;
         userId: number;
+        country: string;
         city: string;
         state: string;
         addressLine1: string;
-        country: string;
         postalCode: string | null;
         isDefault: boolean;
     }>;
@@ -55,10 +58,10 @@ export declare class UsersService {
         createdAt: Date;
         updatedAt: Date;
         userId: number;
+        country: string;
         city: string;
         state: string;
         addressLine1: string;
-        country: string;
         postalCode: string | null;
         isDefault: boolean;
     }>;

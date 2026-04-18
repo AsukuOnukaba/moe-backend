@@ -39,6 +39,18 @@ export class MoeHttpExceptionFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
 
+    // Handle multer file size limit error
+    if (exception instanceof Error && exception.constructor?.name === 'MulterError') {
+      const multerError = exception as any;
+      if (multerError.code === 'LIMIT_FILE_SIZE') {
+        const body: ErrorBody = {
+          message: 'File too large. Maximum size is 5MB.',
+          code: 'VALIDATION_ERROR',
+        };
+        return res.status(413).json(body);
+      }
+    }
+
     const isHttp = exception instanceof HttpException;
     const status = isHttp
       ? exception.getStatus()

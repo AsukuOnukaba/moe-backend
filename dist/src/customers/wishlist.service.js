@@ -12,8 +12,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WishlistService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../database/prisma.service");
-const wishlistStore = new Map();
-let wishlistIdSeq = 1;
 function splitCsv(value) {
     if (!value)
         return [];
@@ -24,64 +22,79 @@ let WishlistService = class WishlistService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    list(userId) {
-        const existing = wishlistStore.get(userId);
-        if (existing)
-            return existing;
-        const created = [];
-        wishlistStore.set(userId, created);
-        return created;
-    }
     async add(user, body) {
         const userId = user.sub;
         const productId = Number(body?.productId ?? body?.id ?? 0);
-        if (!productId)
-            return { message: 'Missing productId', code: 'VALIDATION_ERROR' };
-        const p = await this.prisma.product.findUnique({ where: { id: productId } });
-        if (!p)
-            return { message: 'Product not found', code: 'RESOURCE_NOT_FOUND' };
-        const provider = p.providerId
-            ? await this.prisma.user.findUnique({
-                where: { id: p.providerId },
-                include: { artisanProfile: true },
-            })
-            : null;
-        const priceMin = typeof body?.priceMin === 'number' ? body.priceMin : p.price;
-        const priceMax = typeof body?.priceMax === 'number' ? body.priceMax : p.price;
-        const item = {
-            id: wishlistIdSeq++,
-            customerId: userId,
-            productId: p.id,
-            productName: p.name,
-            providerId: p.providerId,
-            providerName: provider?.artisanProfile?.brandName ?? provider?.name ?? '',
-            priceMin,
-            priceMax,
-            currency: p.currency ?? 'NGN',
-            category: p.category ?? null,
-            imageUrl: p.imageUrl ?? null,
-            styleTags: splitCsv(p.tags),
-            addedAt: new Date().toISOString(),
-        };
-        const list = this.list(userId);
-        const existingIdx = list.findIndex((x) => x.productId === productId);
-        if (existingIdx >= 0)
-            list.splice(existingIdx, 1, item);
-        else
-            list.push(item);
-        return item;
+        if (!productId) {
+            throw new common_1.BadRequestException({ message: 'Missing productId' });
+        }
+        const product = await this.prisma.product.findUnique({
+            where: { id: productId },
+            include: { provider: { include: { artisanProfile: true } } },
+        });
+        if (!product) {
+            throw new common_1.BadRequestException({ message: 'Product not found' });
+        }
+        const existing = await this.prisma.wishlistItem.findUnique({
+            where: { userId_productId: { userId, productId } },
+        });
+        if (existing) {
+            return this.formatWishlistItem(product, existing);
+        }
+        const wishlistItem = await this.prisma.wishlistItem.create({
+            data: {
+                userId,
+                productId,
+            },
+        });
+        return this.formatWishlistItem(product, wishlistItem);
     }
     async listAll(user) {
-        return this.list(user.sub);
+        const userId = user.sub;
+        const items = await this.prisma.wishlistItem.findMany({
+            where: { userId },
+            include: {
+                product: {
+                    include: { provider: { include: { artisanProfile: true } } },
+                },
+            },
+            orderBy: { addedAt: 'desc' },
+        });
+        const data = items.map((item) => this.formatWishlistItem(item.product, item));
+        return {
+            data,
+            total: data.length,
+        };
     }
     async remove(user, productId) {
         const userId = user.sub;
-        const list = this.list(userId);
-        const idx = list.findIndex((x) => x.productId === productId);
-        if (idx < 0)
-            return { message: 'Not found', code: 'RESOURCE_NOT_FOUND' };
-        list.splice(idx, 1);
-        return { success: true };
+        const existing = await this.prisma.wishlistItem.findUnique({
+            where: { userId_productId: { userId, productId } },
+        });
+        if (!existing) {
+            throw new common_1.BadRequestException({ message: 'Not found' });
+        }
+        await this.prisma.wishlistItem.delete({
+            where: { userId_productId: { userId, productId } },
+        });
+        return null;
+    }
+    formatWishlistItem(product, wishlistItem) {
+        const provider = product.provider;
+        const providerName = provider?.artisanProfile?.brandName || provider?.name || 'Unknown';
+        return {
+            id: wishlistItem.id,
+            productId: product.id,
+            productName: product.name,
+            providerId: product.providerId,
+            providerName: providerName,
+            price: product.price ?? null,
+            currency: product.currency ?? 'NGN',
+            category: product.category ?? null,
+            imageUrl: product.imageUrl ?? (product.images?.[0] ?? null),
+            styleTags: splitCsv(product.tags),
+            addedAt: wishlistItem.addedAt,
+        };
     }
 };
 exports.WishlistService = WishlistService;

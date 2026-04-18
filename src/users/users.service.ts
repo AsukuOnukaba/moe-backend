@@ -41,10 +41,15 @@ export class UsersService {
   }
 
   async getAddresses(userId: number) {
-    return await this.prisma.address.findMany({
+    const addresses = await this.prisma.address.findMany({
       where: { userId },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
     });
+
+    return {
+      data: addresses,
+      total: addresses.length,
+    };
   }
 
   async updateAddress(

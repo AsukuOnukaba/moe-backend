@@ -104,6 +104,45 @@ export class ArtisansController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('me/upload-image')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+      fileFilter: (req, file, callback) => {
+        const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedMimes.includes(file.mimetype)) {
+          return callback(
+            new BadRequestException({
+              message: 'Unsupported file type. Upload a JPEG, PNG, or WebP image.',
+            }),
+          );
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async uploadProfileImage(
+    @Req() req: Request,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException({ message: 'No file provided' });
+    }
+
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
+    const filename = `${randomUUID()}${ext}`;
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'artisans');
+    await fs.mkdir(uploadsDir, { recursive: true });
+    const filePath = path.join(uploadsDir, filename);
+    await fs.writeFile(filePath, file.buffer);
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const url = `${baseUrl}/uploads/artisans/${filename}`;
+    return { url };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('me/products/:id')
   async patchProduct(
     @Req() req: Request,

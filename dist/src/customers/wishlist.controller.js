@@ -21,17 +21,17 @@ let WishlistController = class WishlistController {
     constructor(wishlist) {
         this.wishlist = wishlist;
     }
-    list(req) {
+    async list(req) {
         const user = req.user;
         return this.wishlist.listAll(user);
     }
-    add(req, body) {
+    async add(req, body) {
         const user = req.user;
         return this.wishlist.add(user, body);
     }
-    remove(req, productId) {
+    async remove(req, productId) {
         const user = req.user;
-        return this.wishlist.remove(user, Number(productId));
+        await this.wishlist.remove(user, Number(productId));
     }
 };
 exports.WishlistController = WishlistController;
@@ -41,7 +41,7 @@ __decorate([
     __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], WishlistController.prototype, "list", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
@@ -50,16 +50,17 @@ __decorate([
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], WishlistController.prototype, "add", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Delete)(':productId'),
+    (0, common_1.HttpCode)(204),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('productId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, String]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], WishlistController.prototype, "remove", null);
 exports.WishlistController = WishlistController = __decorate([
     (0, common_1.Controller)('customers/me/wishlist'),

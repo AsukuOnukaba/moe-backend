@@ -8,6 +8,8 @@ import { OrdersModule } from '../orders/orders.module';
   imports: [OrdersModule],
   controllers: [PaymentsController],
   providers: [PaymentsService, PaymentMethodsService],
+  exports: [PaymentMethodsService],
 })
 export class PaymentsModule {}
+
 

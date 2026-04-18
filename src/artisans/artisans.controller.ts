@@ -112,11 +112,13 @@ export class ArtisansController {
       fileFilter: (req, file, callback) => {
         const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
         if (!allowedMimes.includes(file.mimetype)) {
-          return callback(
+          callback(
             new BadRequestException({
               message: 'Unsupported file type. Upload a JPEG, PNG, or WebP image.',
             }),
+            false,
           );
+          return;
         }
         callback(null, true);
       },

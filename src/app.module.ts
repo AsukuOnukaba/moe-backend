@@ -15,6 +15,7 @@ import { ServiceProvidersModule } from './service-providers/service-providers.mo
 import { CartModule } from './customers/cart.module';
 import { WishlistModule } from './customers/wishlist.module';
 import { PreferencesModule } from './customers/preferences.module';
+import { CustomersModule } from './customers/customers.module';
 import { OrdersModule } from './orders/orders.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -43,6 +44,7 @@ import { CustomizationModule } from './customization/customization.module';
     CartModule,
     WishlistModule,
     PreferencesModule,
+    CustomersModule,
     OrdersModule,
     MessagingModule,
     NotificationsModule,

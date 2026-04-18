@@ -89,7 +89,7 @@ export class ArtisansService {
           : {}),
         ...(dto.heroImage !== undefined ? { heroImage: dto.heroImage } : {}),
         ...(dto.storeImageUrl !== undefined ? { storeImageUrl: dto.storeImageUrl } : {}),
-        ...(dto.images !== undefined ? { images: dto.images } : {}),
+        ...(dto.images !== undefined && dto.images !== null ? { images: dto.images } : {}),
         ...(dto.customOrdersEnabled !== undefined
           ? { customOrdersEnabled: dto.customOrdersEnabled }
           : {}),

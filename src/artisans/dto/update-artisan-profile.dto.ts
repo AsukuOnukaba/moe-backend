@@ -54,6 +54,10 @@ export class UpdateArtisanProfileDto {
   storeImageUrl?: string | null;
 
   @IsOptional()
+  @IsString()
+  coverImageUrl?: string | null;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   images?: string[] | null;

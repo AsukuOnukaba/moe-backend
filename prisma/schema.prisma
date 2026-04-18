@@ -65,6 +65,7 @@ model ArtisanProfile {
   serviceCategories String?
   heroImage         String?
   storeImageUrl     String?
+  coverImageUrl     String?
   images            String[]
 
   customOrdersEnabled Boolean @default(false)

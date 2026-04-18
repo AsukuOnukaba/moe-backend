@@ -11,12 +11,17 @@ export declare class ArtisansService {
     private requireArtisan;
     getMe(user: AccessTokenPayload): Promise<{
         id: number;
+        providerId: number;
         brandName: string;
+        businessName: string | null;
         firstName: string | null;
         lastName: string | null;
         about: string | null;
+        description: string | null;
         city: string | null;
         state: string | null;
+        country: string | null;
+        address: string | null;
         phone: string | null;
         email: string;
         rating: number;
@@ -25,6 +30,8 @@ export declare class ArtisansService {
         featured: boolean;
         estimatedDeliveryDays: number;
         heroImage: string | null;
+        storeImageUrl: string | null;
+        coverImageUrl: string | null;
         customOrdersEnabled: boolean;
         category: string | null;
         styleTags: string[];
@@ -46,6 +53,8 @@ export declare class ArtisansService {
         featured: boolean;
         estimatedDeliveryDays: number;
         heroImage: string | null;
+        storeImageUrl: string | null;
+        coverImageUrl: string | null;
         customOrdersEnabled: boolean;
         category: string | null;
         styleTags: string[];

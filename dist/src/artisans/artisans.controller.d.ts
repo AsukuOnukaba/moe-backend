@@ -31,12 +31,17 @@ export declare class ArtisansController {
     }>;
     getMe(req: Request): Promise<{
         id: number;
+        providerId: number;
         brandName: string;
+        businessName: string | null;
         firstName: string | null;
         lastName: string | null;
         about: string | null;
+        description: string | null;
         city: string | null;
         state: string | null;
+        country: string | null;
+        address: string | null;
         phone: string | null;
         email: string;
         rating: number;
@@ -45,6 +50,8 @@ export declare class ArtisansController {
         featured: boolean;
         estimatedDeliveryDays: number;
         heroImage: string | null;
+        storeImageUrl: string | null;
+        coverImageUrl: string | null;
         customOrdersEnabled: boolean;
         category: string | null;
         styleTags: string[];
@@ -66,6 +73,8 @@ export declare class ArtisansController {
         featured: boolean;
         estimatedDeliveryDays: number;
         heroImage: string | null;
+        storeImageUrl: string | null;
+        coverImageUrl: string | null;
         customOrdersEnabled: boolean;
         category: string | null;
         styleTags: string[];
@@ -127,6 +136,9 @@ export declare class ArtisansController {
         imageUrl: string;
     }>;
     uploadProfileImage(req: Request, file: Express.Multer.File): Promise<{
+        url: string;
+    }>;
+    uploadCoverImage(req: Request, file: Express.Multer.File): Promise<{
         url: string;
     }>;
     patchProduct(req: Request, id: string, dto: UpdateArtisanProductDto): Promise<{

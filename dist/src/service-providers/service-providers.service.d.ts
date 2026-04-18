@@ -5,12 +5,17 @@ export declare class ServiceProvidersService {
     listPublicInfo(query: any): Promise<{
         data: {
             id: any;
+            providerId: any;
             brandName: any;
+            businessName: any;
             firstName: any;
             lastName: any;
             about: any;
+            description: any;
             city: any;
             state: any;
+            country: any;
+            address: any;
             phone: any;
             email: any;
             rating: any;
@@ -19,6 +24,8 @@ export declare class ServiceProvidersService {
             featured: any;
             estimatedDeliveryDays: any;
             heroImage: any;
+            storeImageUrl: any;
+            coverImageUrl: any;
             customOrdersEnabled: any;
             category: any;
             styleTags: string[];
@@ -33,12 +40,17 @@ export declare class ServiceProvidersService {
     }>;
     getProviderPublicInfo(id: number): Promise<{
         id: any;
+        providerId: any;
         brandName: any;
+        businessName: any;
         firstName: any;
         lastName: any;
         about: any;
+        description: any;
         city: any;
         state: any;
+        country: any;
+        address: any;
         phone: any;
         email: any;
         rating: any;
@@ -47,6 +59,8 @@ export declare class ServiceProvidersService {
         featured: any;
         estimatedDeliveryDays: any;
         heroImage: any;
+        storeImageUrl: any;
+        coverImageUrl: any;
         customOrdersEnabled: any;
         category: any;
         styleTags: string[];
@@ -85,12 +99,17 @@ export declare class ServiceProvidersService {
     recommendations(): Promise<{
         data: {
             id: any;
+            providerId: any;
             brandName: any;
+            businessName: any;
             firstName: any;
             lastName: any;
             about: any;
+            description: any;
             city: any;
             state: any;
+            country: any;
+            address: any;
             phone: any;
             email: any;
             rating: any;
@@ -99,6 +118,8 @@ export declare class ServiceProvidersService {
             featured: any;
             estimatedDeliveryDays: any;
             heroImage: any;
+            storeImageUrl: any;
+            coverImageUrl: any;
             customOrdersEnabled: any;
             category: any;
             styleTags: string[];

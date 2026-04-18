@@ -38,12 +38,17 @@ export class ArtisansService {
 
     return {
       id: artisanProfile.userId,
+      providerId: artisanProfile.userId,
       brandName: artisanProfile.brandName ?? u.name,
+      businessName: artisanProfile.businessName ?? null,
       firstName: artisanProfile.firstName,
       lastName: artisanProfile.lastName,
       about: artisanProfile.about ?? null,
+      description: artisanProfile.description ?? null,
       city: artisanProfile.city ?? null,
       state: artisanProfile.state ?? null,
+      country: artisanProfile.country ?? null,
+      address: artisanProfile.address ?? null,
       phone: u.phone ?? null,
       email: u.email,
       rating: artisanProfile.rating ?? 0,
@@ -52,6 +57,8 @@ export class ArtisansService {
       featured: artisanProfile.featured ?? false,
       estimatedDeliveryDays: artisanProfile.estimatedDeliveryDays ?? 7,
       heroImage: artisanProfile.heroImage ?? null,
+      storeImageUrl: artisanProfile.storeImageUrl ?? null,
+      coverImageUrl: artisanProfile.coverImageUrl ?? null,
       customOrdersEnabled: artisanProfile.customOrdersEnabled ?? false,
       category: artisanProfile.category ?? null,
       styleTags: asArrayFromComma(artisanProfile.styleTags),
@@ -89,6 +96,7 @@ export class ArtisansService {
           : {}),
         ...(dto.heroImage !== undefined ? { heroImage: dto.heroImage } : {}),
         ...(dto.storeImageUrl !== undefined ? { storeImageUrl: dto.storeImageUrl } : {}),
+        ...(dto.coverImageUrl !== undefined ? { coverImageUrl: dto.coverImageUrl } : {}),
         ...(dto.images !== undefined && dto.images !== null ? { images: dto.images } : {}),
         ...(dto.customOrdersEnabled !== undefined
           ? { customOrdersEnabled: dto.customOrdersEnabled }
@@ -121,6 +129,8 @@ export class ArtisansService {
       featured: upserted.featured ?? false,
       estimatedDeliveryDays: upserted.estimatedDeliveryDays ?? 7,
       heroImage: upserted.heroImage ?? null,
+      storeImageUrl: upserted.storeImageUrl ?? null,
+      coverImageUrl: upserted.coverImageUrl ?? null,
       customOrdersEnabled: upserted.customOrdersEnabled ?? false,
       category: upserted.category ?? null,
       styleTags: asArrayFromComma(upserted.styleTags),

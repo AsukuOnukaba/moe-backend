@@ -15,12 +15,17 @@ export declare class ServiceProvidersController {
     listPublicInfo(query: any): Promise<{
         data: {
             id: any;
+            providerId: any;
             brandName: any;
+            businessName: any;
             firstName: any;
             lastName: any;
             about: any;
+            description: any;
             city: any;
             state: any;
+            country: any;
+            address: any;
             phone: any;
             email: any;
             rating: any;
@@ -29,6 +34,8 @@ export declare class ServiceProvidersController {
             featured: any;
             estimatedDeliveryDays: any;
             heroImage: any;
+            storeImageUrl: any;
+            coverImageUrl: any;
             customOrdersEnabled: any;
             category: any;
             styleTags: string[];
@@ -43,12 +50,17 @@ export declare class ServiceProvidersController {
     }>;
     getPublicInfo(id: string): Promise<{
         id: any;
+        providerId: any;
         brandName: any;
+        businessName: any;
         firstName: any;
         lastName: any;
         about: any;
+        description: any;
         city: any;
         state: any;
+        country: any;
+        address: any;
         phone: any;
         email: any;
         rating: any;
@@ -57,6 +69,8 @@ export declare class ServiceProvidersController {
         featured: any;
         estimatedDeliveryDays: any;
         heroImage: any;
+        storeImageUrl: any;
+        coverImageUrl: any;
         customOrdersEnabled: any;
         category: any;
         styleTags: string[];
@@ -95,12 +109,17 @@ export declare class ServiceProvidersController {
     recommendations(): Promise<{
         data: {
             id: any;
+            providerId: any;
             brandName: any;
+            businessName: any;
             firstName: any;
             lastName: any;
             about: any;
+            description: any;
             city: any;
             state: any;
+            country: any;
+            address: any;
             phone: any;
             email: any;
             rating: any;
@@ -109,6 +128,8 @@ export declare class ServiceProvidersController {
             featured: any;
             estimatedDeliveryDays: any;
             heroImage: any;
+            storeImageUrl: any;
+            coverImageUrl: any;
             customOrdersEnabled: any;
             category: any;
             styleTags: string[];

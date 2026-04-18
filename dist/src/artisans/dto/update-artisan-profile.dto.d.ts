@@ -12,6 +12,7 @@ export declare class UpdateArtisanProfileDto {
     serviceCategories?: string | null;
     heroImage?: string | null;
     storeImageUrl?: string | null;
+    coverImageUrl?: string | null;
     images?: string[] | null;
     customOrdersEnabled?: boolean;
     verified?: boolean;

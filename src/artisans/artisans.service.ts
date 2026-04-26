@@ -256,7 +256,7 @@ export class ArtisansService {
       estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
       materials: p.materials ?? '',
       tags: p.tags ? asArrayFromComma(p.tags) : [],
-      images: p.imageUrl ? [p.imageUrl] : [],
+      images: Array.isArray(p.images) ? p.images : (p.imageUrl ? [p.imageUrl] : []),
       category: p.category ?? null,
       providerId: p.providerId,
       featured: p.featured ?? false,

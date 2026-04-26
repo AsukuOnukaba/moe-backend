@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
@@ -23,18 +28,31 @@ export class ArtisansService {
 
   private requireArtisan(user: AccessTokenPayload) {
     if (!user || user.role !== 'artisan') {
-      throw new ForbiddenException({ message: 'Forbidden', code: 'RESOURCE_NOT_FOUND' });
+      throw new ForbiddenException({
+        message: 'Forbidden',
+        code: 'RESOURCE_NOT_FOUND',
+      });
     }
     return user.sub;
   }
 
   async getMe(user: AccessTokenPayload) {
     const userId = this.requireArtisan(user);
-    const artisanProfile = await this.prisma.artisanProfile.findUnique({ where: { userId } });
-    if (!artisanProfile) throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    const artisanProfile = await this.prisma.artisanProfile.findUnique({
+      where: { userId },
+    });
+    if (!artisanProfile)
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
 
     const u = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!u) throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    if (!u)
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
 
     return {
       id: artisanProfile.userId,
@@ -82,8 +100,12 @@ export class ArtisansService {
       },
       update: {
         ...(dto.brandName !== undefined ? { brandName: dto.brandName } : {}),
-        ...(dto.businessName !== undefined ? { businessName: dto.businessName } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.businessName !== undefined
+          ? { businessName: dto.businessName }
+          : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
         ...(dto.about !== undefined ? { about: dto.about } : {}),
         ...(dto.country !== undefined ? { country: dto.country } : {}),
         ...(dto.address !== undefined ? { address: dto.address } : {}),
@@ -95,9 +117,15 @@ export class ArtisansService {
           ? { serviceCategories: dto.serviceCategories }
           : {}),
         ...(dto.heroImage !== undefined ? { heroImage: dto.heroImage } : {}),
-        ...(dto.storeImageUrl !== undefined ? { storeImageUrl: dto.storeImageUrl } : {}),
-        ...(dto.coverImageUrl !== undefined ? { coverImageUrl: dto.coverImageUrl } : {}),
-        ...(dto.images !== undefined && dto.images !== null ? { images: dto.images } : {}),
+        ...(dto.storeImageUrl !== undefined
+          ? { storeImageUrl: dto.storeImageUrl }
+          : {}),
+        ...(dto.coverImageUrl !== undefined
+          ? { coverImageUrl: dto.coverImageUrl }
+          : {}),
+        ...(dto.images !== undefined && dto.images !== null
+          ? { images: dto.images }
+          : {}),
         ...(dto.customOrdersEnabled !== undefined
           ? { customOrdersEnabled: dto.customOrdersEnabled }
           : {}),
@@ -111,7 +139,11 @@ export class ArtisansService {
 
     // return same shape as getMe
     const u = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!u) throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    if (!u)
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
 
     return {
       id: upserted.userId,
@@ -144,7 +176,9 @@ export class ArtisansService {
     const safePage = Math.max(1, page);
     const safePageSize = Math.max(1, Math.min(100, pageSize));
 
-    const totalItems = await this.prisma.product.count({ where: { providerId: userId } });
+    const totalItems = await this.prisma.product.count({
+      where: { providerId: userId },
+    });
     const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
 
     const items = await this.prisma.product.findMany({
@@ -173,8 +207,8 @@ export class ArtisansService {
         providerId: userId,
         name: dto.name,
         description: dto.description ?? null,
-        price: dto.price,
-        originalPrice: dto.originalPrice ?? null,
+        price: dto.priceMin ?? dto.price ?? 0,
+        originalPrice: dto.priceMax ?? dto.originalPrice ?? null,
         currency: dto.currency ?? 'NGN',
         images: dto.images ?? [],
         category: dto.category ?? null,
@@ -203,26 +237,47 @@ export class ArtisansService {
       where: { id: productId, providerId: userId },
     });
     if (!existing) {
-      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
     }
 
     const updated = await this.prisma.product.update({
       where: { id: productId },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
-        ...(dto.price !== undefined ? { price: dto.price } : {}),
-        ...(dto.originalPrice !== undefined ? { originalPrice: dto.originalPrice } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
+        // Price: priceMin takes priority over legacy price field
+        ...(dto.priceMin !== undefined
+          ? { price: dto.priceMin }
+          : dto.price !== undefined
+            ? { price: dto.price }
+            : {}),
+        // priceMax stored as originalPrice
+        ...(dto.priceMax !== undefined
+          ? { originalPrice: dto.priceMax }
+          : dto.originalPrice !== undefined
+            ? { originalPrice: dto.originalPrice }
+            : {}),
         ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
         ...(dto.images !== undefined ? { images: dto.images ?? [] } : {}),
         ...(dto.category !== undefined ? { category: dto.category } : {}),
         ...(dto.materials !== undefined ? { materials: dto.materials } : {}),
         ...(dto.tags !== undefined ? { tags: dto.tags } : {}),
         ...(dto.featured !== undefined ? { featured: dto.featured } : {}),
-        ...(dto.isBestSeller !== undefined ? { isBestSeller: dto.isBestSeller } : {}),
+        ...(dto.isBestSeller !== undefined
+          ? { isBestSeller: dto.isBestSeller }
+          : {}),
         ...(dto.isTrending !== undefined ? { isTrending: dto.isTrending } : {}),
-        ...(dto.isNewArrival !== undefined ? { isNewArrival: dto.isNewArrival } : {}),
-        ...(dto.discountPercent !== undefined ? { discountPercent: dto.discountPercent } : {}),
+        ...(dto.isNewArrival !== undefined
+          ? { isNewArrival: dto.isNewArrival }
+          : {}),
+        ...(dto.discountPercent !== undefined
+          ? { discountPercent: dto.discountPercent }
+          : {}),
         ...(dto.estimatedDeliveryDays !== undefined
           ? { estimatedDeliveryDays: dto.estimatedDeliveryDays }
           : {}),
@@ -239,7 +294,10 @@ export class ArtisansService {
       where: { id: productId, providerId: userId },
     });
     if (!existing) {
-      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
     }
 
     await this.prisma.product.delete({ where: { id: productId } });
@@ -256,7 +314,11 @@ export class ArtisansService {
       estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
       materials: p.materials ?? '',
       tags: p.tags ? asArrayFromComma(p.tags) : [],
-      images: Array.isArray(p.images) ? p.images : (p.imageUrl ? [p.imageUrl] : []),
+      images: Array.isArray(p.images)
+        ? p.images
+        : p.imageUrl
+          ? [p.imageUrl]
+          : [],
       category: p.category ?? null,
       providerId: p.providerId,
       featured: p.featured ?? false,
@@ -320,4 +382,3 @@ export class ArtisansService {
     };
   }
 }
-

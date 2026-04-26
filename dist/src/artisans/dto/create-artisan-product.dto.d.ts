@@ -1,7 +1,9 @@
 export declare class CreateArtisanProductDto {
     name: string;
     description?: string | null;
-    price: number;
+    price?: number;
+    priceMin?: number;
+    priceMax?: number;
     originalPrice?: number | null;
     currency?: string;
     images?: string[] | null;

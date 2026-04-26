@@ -1,4 +1,12 @@
-import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -8,9 +16,20 @@ export class CreateArtisanProductDto {
   @IsString()
   description?: string | null;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  price!: number;
+  price?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  priceMin?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  priceMax?: number;
 
   @IsOptional()
   @IsNumber()
@@ -63,4 +82,3 @@ export class CreateArtisanProductDto {
   @IsInt()
   estimatedDeliveryDays?: number;
 }
-

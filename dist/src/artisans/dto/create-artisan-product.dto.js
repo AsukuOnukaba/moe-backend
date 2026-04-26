@@ -15,6 +15,8 @@ class CreateArtisanProductDto {
     name;
     description;
     price;
+    priceMin;
+    priceMax;
     originalPrice;
     currency;
     images;
@@ -39,10 +41,23 @@ __decorate([
     __metadata("design:type", Object)
 ], CreateArtisanProductDto.prototype, "description", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], CreateArtisanProductDto.prototype, "price", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], CreateArtisanProductDto.prototype, "priceMin", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], CreateArtisanProductDto.prototype, "priceMax", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),

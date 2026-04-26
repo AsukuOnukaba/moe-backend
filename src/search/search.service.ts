@@ -17,7 +17,7 @@ function productToDto(p: any) {
     estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
     materials: p.materials ?? '',
     tags: splitCsv(p.tags ?? null),
-    images: p.imageUrl ? [p.imageUrl] : [],
+    images: Array.isArray(p.images) ? p.images : (p.imageUrl ? [p.imageUrl] : []),
     category: p.category ?? null,
     providerId: p.providerId,
     featured: p.featured ?? false,

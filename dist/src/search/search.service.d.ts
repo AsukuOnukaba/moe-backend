@@ -15,7 +15,7 @@ export declare class SearchService {
             estimatedDeliveryDays: any;
             materials: any;
             tags: string[];
-            images: any[];
+            images: any;
             category: any;
             providerId: any;
             featured: any;

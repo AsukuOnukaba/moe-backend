@@ -21,7 +21,7 @@ export declare class ProductsService {
             estimatedDeliveryDays: any;
             materials: any;
             tags: string[];
-            images: any[];
+            images: any;
             category: any;
             providerId: any;
             featured: any;
@@ -46,7 +46,7 @@ export declare class ProductsService {
         estimatedDeliveryDays: any;
         materials: any;
         tags: string[];
-        images: any[];
+        images: any;
         category: any;
         providerId: any;
         featured: any;
@@ -69,7 +69,7 @@ export declare class ProductsService {
             estimatedDeliveryDays: any;
             materials: any;
             tags: string[];
-            images: any[];
+            images: any;
             category: any;
             providerId: any;
             featured: any;
@@ -100,7 +100,7 @@ export declare class ProductsService {
             estimatedDeliveryDays: any;
             materials: any;
             tags: string[];
-            images: any[];
+            images: any;
             category: any;
             providerId: any;
             featured: any;

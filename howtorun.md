@@ -4,4 +4,4 @@ npx prisma migrate dev
 npx prisma generate
 npm run start:dev
 npx prisma db seed
-
+bash deploy.sh

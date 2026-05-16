@@ -1,32 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { productToDto, toTagArray } from '../common/product-mapper';
 
 function splitCsv(value: string | null) {
-  if (!value) return [];
-  return value.split(',').map((s) => s.trim()).filter(Boolean);
-}
-
-function productToDto(p: any) {
-  const price = typeof p.price === 'number' ? p.price : 0;
-  return {
-    id: p.id,
-    name: p.name,
-    description: p.description ?? '',
-    priceRange: { min: price, max: price },
-    currency: p.currency ?? 'NGN',
-    estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
-    materials: p.materials ?? '',
-    tags: splitCsv(p.tags ?? null),
-    images: Array.isArray(p.images) ? p.images : (p.imageUrl ? [p.imageUrl] : []),
-    category: p.category ?? null,
-    providerId: p.providerId,
-    featured: p.featured ?? false,
-    isBestSeller: p.isBestSeller ?? false,
-    isTrending: p.isTrending ?? false,
-    isNewArrival: p.isNewArrival ?? false,
-    discountPercent: p.discountPercent ?? null,
-    originalPrice: p.originalPrice ?? null,
-  };
+  return toTagArray(value);
 }
 
 function providerToDto(user: any, ap: any) {
@@ -82,6 +59,7 @@ export class SearchService {
       includeProducts
         ? this.prisma.product.findMany({
             where: {
+              status: 'approved',
               OR: [
                 { name: { contains: query, mode: 'insensitive' } },
                 { description: { contains: query, mode: 'insensitive' } },
@@ -97,6 +75,7 @@ export class SearchService {
         ? this.prisma.user.findMany({
             where: {
               roles: { some: { role: { name: 'artisan' } } },
+              artisanProfile: { status: 'approved' },
               OR: [
                 { name: { contains: query, mode: 'insensitive' } },
                 { phone: { contains: query, mode: 'insensitive' } },

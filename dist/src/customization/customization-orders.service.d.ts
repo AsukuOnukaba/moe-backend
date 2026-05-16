@@ -1,12 +1,14 @@
+import { PrismaService } from '../database/prisma.service';
 type CustomizationOrder = {
     id: number;
     productId: number;
     customerId: number;
-    selectedVariants: Record<string, any>;
+    selectedVariants: Record<string, unknown>;
     selectedSize: string;
     selectedBodyType: string | null;
     selectedFootType: string | null;
-    measurements: Record<string, any>;
+    measurements: Record<string, unknown>;
+    customisation: Record<string, unknown>;
     notes: string | null;
     basePrice: number;
     variantModifierTotal: number;
@@ -19,16 +21,23 @@ type CustomizationOrder = {
     createdAt: string;
     updatedAt: string;
 };
-type CustomRequest = {
-    id: number;
-    status: 'pending_review';
-};
 export declare class CustomizationOrdersService {
-    create(customer: any, body: any): Promise<CustomizationOrder | {
+    private readonly prisma;
+    constructor(prisma: PrismaService);
+    create(customer: {
+        sub: number;
+    }, body: Record<string, unknown>): Promise<CustomizationOrder | {
         message: string;
         code: string;
     }>;
-    getById(customer: any, id: number): Promise<CustomizationOrder>;
-    createCustomRequest(customer: any, body: any): Promise<CustomRequest>;
+    getById(customer: {
+        sub: number;
+    }, id: number): Promise<CustomizationOrder>;
+    createCustomRequest(_customer: {
+        sub: number;
+    }, _body: Record<string, unknown>): Promise<{
+        id: number;
+        status: "pending_review";
+    }>;
 }
 export {};

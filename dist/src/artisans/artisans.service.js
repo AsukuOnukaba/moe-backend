@@ -13,6 +13,7 @@ exports.ArtisansService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const prisma_service_1 = require("../database/prisma.service");
+const product_mapper_1 = require("../common/product-mapper");
 function asArrayFromComma(value) {
     if (!value)
         return [];
@@ -77,6 +78,9 @@ let ArtisansService = class ArtisansService {
             storeImageUrl: artisanProfile.storeImageUrl ?? null,
             coverImageUrl: artisanProfile.coverImageUrl ?? null,
             customOrdersEnabled: artisanProfile.customOrdersEnabled ?? false,
+            rushOrderEnabled: artisanProfile.rushOrderEnabled ?? false,
+            rushOrderSurchargePercent: artisanProfile.rushOrderSurchargePercent ?? 25,
+            status: artisanProfile.status ?? 'pending',
             category: artisanProfile.category ?? null,
             styleTags: asArrayFromComma(artisanProfile.styleTags),
             serviceCategories: asArrayFromComma(artisanProfile.serviceCategories),
@@ -127,6 +131,12 @@ let ArtisansService = class ArtisansService {
                 ...(dto.customOrdersEnabled !== undefined
                     ? { customOrdersEnabled: dto.customOrdersEnabled }
                     : {}),
+                ...(dto.rushOrderEnabled !== undefined
+                    ? { rushOrderEnabled: dto.rushOrderEnabled }
+                    : {}),
+                ...(dto.rushOrderSurchargePercent !== undefined
+                    ? { rushOrderSurchargePercent: dto.rushOrderSurchargePercent }
+                    : {}),
                 ...(dto.verified !== undefined ? { verified: dto.verified } : {}),
                 ...(dto.featured !== undefined ? { featured: dto.featured } : {}),
                 ...(dto.estimatedDeliveryDays !== undefined
@@ -159,6 +169,9 @@ let ArtisansService = class ArtisansService {
             storeImageUrl: upserted.storeImageUrl ?? null,
             coverImageUrl: upserted.coverImageUrl ?? null,
             customOrdersEnabled: upserted.customOrdersEnabled ?? false,
+            rushOrderEnabled: upserted.rushOrderEnabled ?? false,
+            rushOrderSurchargePercent: upserted.rushOrderSurchargePercent ?? 25,
+            status: upserted.status ?? 'pending',
             category: upserted.category ?? null,
             styleTags: asArrayFromComma(upserted.styleTags),
             serviceCategories: asArrayFromComma(upserted.serviceCategories),
@@ -179,7 +192,7 @@ let ArtisansService = class ArtisansService {
             take: safePageSize,
         });
         return {
-            data: items.map((p) => this.toProductDto(p)),
+            data: items.map((p) => (0, product_mapper_1.productToDto)(p)),
             pagination: {
                 page: safePage,
                 pageSize: safePageSize,
@@ -208,9 +221,10 @@ let ArtisansService = class ArtisansService {
                 isNewArrival: dto.isNewArrival ?? false,
                 discountPercent: dto.discountPercent ?? null,
                 estimatedDeliveryDays: dto.estimatedDeliveryDays ?? 7,
+                status: 'pending',
             },
         });
-        return this.toProductDto(created);
+        return (0, product_mapper_1.productToDto)(created);
     }
     async patchProduct(user, productId, dto) {
         const userId = this.requireArtisan(user);
@@ -261,7 +275,7 @@ let ArtisansService = class ArtisansService {
                     : {}),
             },
         });
-        return this.toProductDto(updated);
+        return (0, product_mapper_1.productToDto)(updated);
     }
     async deleteProduct(user, productId) {
         const userId = this.requireArtisan(user);
@@ -277,35 +291,63 @@ let ArtisansService = class ArtisansService {
         await this.prisma.product.delete({ where: { id: productId } });
         return { success: true };
     }
-    toProductDto(p) {
+    async getFilterMeta() {
+        const [categories, serviceCategoryRows, locationRows] = await Promise.all([
+            this.prisma.artisanProfile.findMany({
+                where: { status: 'approved' },
+                distinct: ['category'],
+                select: { category: true },
+            }),
+            this.prisma.artisanProfile.findMany({
+                where: { status: 'approved', serviceCategories: { not: null } },
+                select: { serviceCategories: true },
+            }),
+            this.prisma.artisanProfile.findMany({
+                where: { status: 'approved' },
+                select: { location: true, city: true },
+            }),
+        ]);
+        const serviceCategories = new Set();
+        for (const row of serviceCategoryRows) {
+            for (const item of asArrayFromComma(row.serviceCategories)) {
+                serviceCategories.add(item);
+            }
+        }
+        const locations = new Set();
+        for (const row of locationRows) {
+            if (row.location)
+                locations.add(row.location);
+            if (row.city)
+                locations.add(row.city);
+        }
         return {
-            id: p.id,
-            name: p.name,
-            description: p.description ?? '',
-            priceRange: { min: p.price, max: p.price },
-            currency: p.currency,
-            estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
-            materials: p.materials ?? '',
-            tags: p.tags ? asArrayFromComma(p.tags) : [],
-            images: Array.isArray(p.images)
-                ? p.images
-                : p.imageUrl
-                    ? [p.imageUrl]
-                    : [],
-            category: p.category ?? null,
-            providerId: p.providerId,
-            featured: p.featured ?? false,
-            isBestSeller: p.isBestSeller ?? false,
-            isTrending: p.isTrending ?? false,
-            isNewArrival: p.isNewArrival ?? false,
-            discountPercent: p.discountPercent ?? null,
-            originalPrice: p.originalPrice ?? null,
+            categories: categories
+                .map((c) => c.category)
+                .filter((c) => Boolean(c))
+                .sort(),
+            serviceCategories: [...serviceCategories].sort(),
+            locations: [...locations].sort(),
+        };
+    }
+    async getRushOrderConfig(artisanId) {
+        const profile = await this.prisma.artisanProfile.findUnique({
+            where: { userId: artisanId },
+        });
+        if (!profile) {
+            throw new common_1.NotFoundException({
+                message: 'Not found',
+                code: 'RESOURCE_NOT_FOUND',
+            });
+        }
+        return {
+            rushOrderEnabled: profile.rushOrderEnabled ?? false,
+            surchargePercent: profile.rushOrderSurchargePercent ?? 25,
         };
     }
     async getAll(page, pageSize, category) {
         const safePage = Math.max(1, page ?? 1);
         const safePageSize = Math.max(1, Math.min(100, pageSize ?? 20));
-        const where = {};
+        const where = { status: 'approved' };
         if (category) {
             where.category = {
                 equals: category,

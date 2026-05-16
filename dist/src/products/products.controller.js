@@ -20,6 +20,12 @@ let ProductsController = class ProductsController {
     constructor(products) {
         this.products = products;
     }
+    customisationTemplate(category) {
+        return this.products.getCustomisationTemplate(category ?? '');
+    }
+    filterMeta() {
+        return this.products.getFilterMeta();
+    }
     list(query) {
         return this.products.listProducts(query);
     }
@@ -37,6 +43,19 @@ let ProductsController = class ProductsController {
     }
 };
 exports.ProductsController = ProductsController;
+__decorate([
+    (0, common_1.Get)('customisation-template'),
+    __param(0, (0, common_1.Query)('category')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], ProductsController.prototype, "customisationTemplate", null);
+__decorate([
+    (0, common_1.Get)('filter-meta'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], ProductsController.prototype, "filterMeta", null);
 __decorate([
     (0, common_1.Get)(),
     __param(0, (0, common_1.Query)()),

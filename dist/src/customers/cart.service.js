@@ -17,6 +17,21 @@ const cartStore = new Map();
 function splitProviderName(providerProfile, user) {
     return providerProfile?.brandName ?? user?.name ?? '';
 }
+function hasCustomisationPayload(body) {
+    const customisation = body.customisation ?? body.customization;
+    if (customisation && typeof customisation === 'object' && Object.keys(customisation).length > 0) {
+        return true;
+    }
+    const measurements = body.measurements;
+    if (measurements && typeof measurements === 'object' && Object.keys(measurements).length > 0) {
+        return true;
+    }
+    const selectedVariants = body.selectedVariants;
+    if (selectedVariants && typeof selectedVariants === 'object' && Object.keys(selectedVariants).length > 0) {
+        return true;
+    }
+    return Boolean(body.selectedSize || body.selectedBodyType);
+}
 let CartService = class CartService {
     prisma;
     constructor(prisma) {
@@ -31,39 +46,49 @@ let CartService = class CartService {
         return created;
     }
     async list(user) {
-        const items = this.getCartForUser(user.sub);
-        return items;
+        return this.getCartForUser(user.sub);
     }
     async add(user, body) {
         const userId = user.sub;
         const productId = Number(body?.productId ?? body?.id ?? 0);
         const quantity = Math.max(1, Number(body?.quantity ?? 1));
-        if (!productId)
-            return { message: 'Missing productId', code: 'VALIDATION_ERROR' };
+        if (!productId) {
+            throw new common_1.BadRequestException({ message: 'Missing productId', code: 'VALIDATION_ERROR' });
+        }
         const p = await this.prisma.product.findUnique({ where: { id: productId } });
-        if (!p)
-            return { message: 'Product not found', code: 'RESOURCE_NOT_FOUND' };
+        if (!p) {
+            throw new common_1.BadRequestException({ message: 'Product not found', code: 'RESOURCE_NOT_FOUND' });
+        }
+        if (p.customisationRequired && !hasCustomisationPayload(body)) {
+            throw new common_1.BadRequestException({
+                message: 'Customisation is required for this product',
+                code: 'CUSTOMISATION_REQUIRED',
+            });
+        }
         const provider = p.providerId
             ? await this.prisma.user.findUnique({
                 where: { id: p.providerId },
                 include: { artisanProfile: true },
             })
             : null;
-        const basePrice = typeof body?.basePrice === 'number' ? body.basePrice : p.price;
+        const basePrice = typeof body?.basePrice === 'number' ? body.basePrice : (p.price ?? 0);
         const finalPrice = typeof body?.finalPrice === 'number' ? body.finalPrice : basePrice;
         const item = {
             id: (0, crypto_1.randomUUID)(),
             productId: p.id,
             productName: p.name,
             providerId: p.providerId,
-            providerName: splitProviderName(provider?.artisanProfile, provider),
+            providerName: splitProviderName(provider?.artisanProfile ?? null, provider),
             basePrice,
             finalPrice,
             category: p.category ?? '',
-            selectedSize: body?.selectedSize ?? 'M',
+            selectedSize: typeof body?.selectedSize === 'string' ? body.selectedSize : 'M',
             selectedBodyType: body?.selectedBodyType ?? null,
             selectedVariants: body?.selectedVariants ?? {},
             measurements: body?.measurements ?? {},
+            customisation: body?.customisation ??
+                body?.customization ??
+                null,
             notes: typeof body?.notes === 'string' ? body.notes : null,
             quantity,
         };
@@ -72,28 +97,29 @@ let CartService = class CartService {
         return item;
     }
     async patch(user, cartItemId, body) {
-        const userId = user.sub;
-        const cart = this.getCartForUser(userId);
+        const cart = this.getCartForUser(user.sub);
         const idx = cart.findIndex((i) => i.id === cartItemId);
-        if (idx < 0)
-            return { message: 'Not found', code: 'RESOURCE_NOT_FOUND' };
+        if (idx < 0) {
+            throw new common_1.BadRequestException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+        }
         const item = cart[idx];
-        const quantity = body?.quantity !== undefined ? Math.max(1, Number(body.quantity)) : item.quantity;
         cart[idx] = {
             ...item,
-            quantity,
+            quantity: body?.quantity !== undefined ? Math.max(1, Number(body.quantity)) : item.quantity,
             notes: body?.notes !== undefined ? (typeof body.notes === 'string' ? body.notes : null) : item.notes,
             selectedSize: body?.selectedSize !== undefined ? String(body.selectedSize) : item.selectedSize,
-            selectedBodyType: body?.selectedBodyType !== undefined ? body.selectedBodyType : item.selectedBodyType,
+            selectedBodyType: body?.selectedBodyType !== undefined
+                ? body.selectedBodyType
+                : item.selectedBodyType,
         };
         return cart[idx];
     }
     async remove(user, cartItemId) {
-        const userId = user.sub;
-        const cart = this.getCartForUser(userId);
+        const cart = this.getCartForUser(user.sub);
         const idx = cart.findIndex((i) => i.id === cartItemId);
-        if (idx < 0)
-            return { message: 'Not found', code: 'RESOURCE_NOT_FOUND' };
+        if (idx < 0) {
+            throw new common_1.BadRequestException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+        }
         cart.splice(idx, 1);
         return { success: true };
     }

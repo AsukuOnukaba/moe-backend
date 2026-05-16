@@ -9,8 +9,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
-const serve_static_1 = require("@nestjs/serve-static");
-const path_1 = require("path");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const env_validation_1 = require("./config/env.validation");
@@ -32,6 +30,9 @@ const payments_module_1 = require("./payments/payments.module");
 const search_module_1 = require("./search/search.module");
 const support_module_1 = require("./support/support.module");
 const customization_module_1 = require("./customization/customization.module");
+const admin_module_1 = require("./admin/admin.module");
+const email_module_1 = require("./common/email/email.module");
+const storage_module_1 = require("./common/storage/storage.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -43,10 +44,8 @@ exports.AppModule = AppModule = __decorate([
                 validate: env_validation_1.validateEnv,
                 expandVariables: true,
             }),
-            serve_static_1.ServeStaticModule.forRoot({
-                rootPath: (0, path_1.join)(__dirname, '..', 'uploads'),
-                serveRoot: '/uploads',
-            }),
+            email_module_1.EmailModule,
+            storage_module_1.StorageModule,
             database_module_1.DatabaseModule,
             auth_module_1.AuthModule,
             users_module_1.UsersModule,
@@ -64,6 +63,7 @@ exports.AppModule = AppModule = __decorate([
             search_module_1.SearchModule,
             support_module_1.SupportModule,
             customization_module_1.CustomizationModule,
+            admin_module_1.AdminModule,
         ],
         controllers: [app_controller_1.AppController, health_controller_1.HealthController],
         providers: [app_service_1.AppService],

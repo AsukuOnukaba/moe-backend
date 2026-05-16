@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { productToDto } from '../common/product-mapper';
+import { getCustomisationTemplate } from './product-customisation.templates';
 
 type Pagination = {
   page: number;
@@ -8,33 +10,7 @@ type Pagination = {
   totalItems: number;
 };
 
-function toTagArray(value: string | null) {
-  if (!value) return [];
-  return value.split(',').map((s) => s.trim()).filter(Boolean);
-}
-
-function productToDto(p: any) {
-  const price = typeof p.price === 'number' ? p.price : 0;
-  return {
-    id: p.id,
-    name: p.name,
-    description: p.description ?? '',
-    priceRange: { min: price, max: price },
-    currency: p.currency ?? 'NGN',
-    estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
-    materials: p.materials ?? '',
-    tags: toTagArray(p.tags ?? null),
-    images: Array.isArray(p.images) ? p.images : (p.imageUrl ? [p.imageUrl] : []),
-    category: p.category ?? null,
-    providerId: p.providerId,
-    featured: p.featured ?? false,
-    isBestSeller: p.isBestSeller ?? false,
-    isTrending: p.isTrending ?? false,
-    isNewArrival: p.isNewArrival ?? false,
-    discountPercent: p.discountPercent ?? null,
-    originalPrice: p.originalPrice ?? null,
-  };
-}
+const APPROVED_STATUS = 'approved';
 
 @Injectable()
 export class ProductsService {
@@ -53,9 +29,21 @@ export class ProductsService {
     const priceMin = query?.priceMin !== undefined ? Number(query.priceMin) : undefined;
     const priceMax = query?.priceMax !== undefined ? Number(query.priceMax) : undefined;
 
-    const where: any = {};
+    const where: any = { status: APPROVED_STATUS };
     if (category) where.category = category;
     if (featured !== undefined) where.featured = featured;
+
+    const styleTags =
+      typeof query?.styleTags === 'string'
+        ? query.styleTags.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : Array.isArray(query?.styleTags)
+          ? query.styleTags.map((s: string) => String(s).trim()).filter(Boolean)
+          : [];
+    if (styleTags.length > 0) {
+      where.AND = styleTags.map((tag: string) => ({
+        tags: { contains: tag, mode: 'insensitive' },
+      }));
+    }
     if (priceMin !== undefined || priceMax !== undefined) {
       where.price = {};
       if (priceMin !== undefined) where.price.gte = priceMin;
@@ -105,9 +93,65 @@ export class ProductsService {
   }
 
   async getProductById(id: number) {
-    const p = await this.prisma.product.findUnique({ where: { id } });
+    const p = await this.prisma.product.findFirst({
+      where: { id, status: APPROVED_STATUS },
+    });
     if (!p) return null;
     return productToDto(p);
+  }
+
+  async getCustomisationTemplate(category: string) {
+    return { category, fields: getCustomisationTemplate(category) };
+  }
+
+  async getFilterMeta() {
+    const approved = { status: APPROVED_STATUS };
+    const [categories, tagRows, priceAgg, deliveryRows] = await Promise.all([
+      this.prisma.product.findMany({
+        where: approved,
+        distinct: ['category'],
+        select: { category: true },
+      }),
+      this.prisma.product.findMany({
+        where: { ...approved, tags: { not: null } },
+        select: { tags: true },
+      }),
+      this.prisma.product.aggregate({
+        where: approved,
+        _min: { price: true },
+        _max: { price: true },
+      }),
+      this.prisma.product.findMany({
+        where: approved,
+        distinct: ['estimatedDeliveryDays'],
+        select: { estimatedDeliveryDays: true },
+      }),
+    ]);
+
+    const styleTagSet = new Set<string>();
+    for (const row of tagRows) {
+      if (!row.tags) continue;
+      for (const tag of row.tags.split(',')) {
+        const t = tag.trim();
+        if (t) styleTagSet.add(t);
+      }
+    }
+
+    return {
+      categories: categories
+        .map((c) => c.category)
+        .filter((c): c is string => Boolean(c))
+        .sort(),
+      styleTags: [...styleTagSet].sort(),
+      priceRange: {
+        min: priceAgg._min.price ?? 0,
+        max: priceAgg._max.price ?? 0,
+      },
+      deliveryDays: deliveryRows
+        .map((d) => d.estimatedDeliveryDays)
+        .filter((d): d is number => d != null)
+        .sort((a, b) => a - b),
+    };
   }
 
   async recommendations(query: any) {
@@ -117,6 +161,7 @@ export class ProductsService {
     const skip = (page - 1) * pageSize;
 
     const items = await this.prisma.product.findMany({
+      where: { status: APPROVED_STATUS },
       orderBy: { updatedAt: 'desc' },
       skip,
       take: pageSize,

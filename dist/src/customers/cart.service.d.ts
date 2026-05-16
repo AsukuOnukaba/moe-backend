@@ -11,8 +11,9 @@ type CartItem = {
     category: string;
     selectedSize: string;
     selectedBodyType: string | null;
-    selectedVariants: {};
-    measurements: {};
+    selectedVariants: Record<string, unknown>;
+    measurements: Record<string, unknown>;
+    customisation: Record<string, unknown> | null;
     notes: string | null;
     quantity: number;
 };
@@ -21,22 +22,10 @@ export declare class CartService {
     constructor(prisma: PrismaService);
     private getCartForUser;
     list(user: AccessTokenPayload): Promise<CartItem[]>;
-    add(user: AccessTokenPayload, body: any): Promise<CartItem | {
-        message: string;
-        code: string;
-    }>;
-    patch(user: AccessTokenPayload, cartItemId: string, body: any): Promise<CartItem | {
-        message: string;
-        code: string;
-    }>;
+    add(user: AccessTokenPayload, body: Record<string, unknown>): Promise<CartItem>;
+    patch(user: AccessTokenPayload, cartItemId: string, body: Record<string, unknown>): Promise<CartItem>;
     remove(user: AccessTokenPayload, cartItemId: string): Promise<{
-        message: string;
-        code: string;
-        success?: undefined;
-    } | {
         success: boolean;
-        message?: undefined;
-        code?: undefined;
     }>;
     clear(user: AccessTokenPayload): Promise<{
         success: boolean;

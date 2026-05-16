@@ -1,11 +1,22 @@
 import type { Request } from 'express';
+import { CloudinaryService } from '../common/storage/cloudinary.service';
 import { ArtisansService } from './artisans.service';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 export declare class ArtisansController {
     private readonly artisans;
-    constructor(artisans: ArtisansService);
+    private readonly cloudinary;
+    constructor(artisans: ArtisansService, cloudinary: CloudinaryService);
+    filterMeta(): Promise<{
+        categories: string[];
+        serviceCategories: string[];
+        locations: string[];
+    }>;
+    rushOrderConfig(id: string): Promise<{
+        rushOrderEnabled: boolean;
+        surchargePercent: number;
+    }>;
     getAll(page?: string, pageSize?: string, category?: string): Promise<{
         data: {
             id: number;
@@ -53,6 +64,9 @@ export declare class ArtisansController {
         storeImageUrl: string | null;
         coverImageUrl: string | null;
         customOrdersEnabled: boolean;
+        rushOrderEnabled: boolean;
+        rushOrderSurchargePercent: number;
+        status: string;
         category: string | null;
         styleTags: string[];
         serviceCategories: string[];
@@ -76,32 +90,37 @@ export declare class ArtisansController {
         storeImageUrl: string | null;
         coverImageUrl: string | null;
         customOrdersEnabled: boolean;
+        rushOrderEnabled: boolean;
+        rushOrderSurchargePercent: number;
+        status: string;
         category: string | null;
         styleTags: string[];
         serviceCategories: string[];
     }>;
     listProducts(req: Request, page?: string, pageSize?: string): Promise<{
         data: {
-            id: any;
-            name: any;
-            description: any;
+            id: number;
+            name: string;
+            description: string;
             priceRange: {
-                min: any;
-                max: any;
+                min: number;
+                max: number;
             };
-            currency: any;
-            estimatedDeliveryDays: any;
-            materials: any;
+            currency: string;
+            estimatedDeliveryDays: number;
+            materials: string;
             tags: string[];
-            images: any;
-            category: any;
-            providerId: any;
-            featured: any;
-            isBestSeller: any;
-            isTrending: any;
-            isNewArrival: any;
-            discountPercent: any;
-            originalPrice: any;
+            images: string[];
+            category: string | null;
+            providerId: number | null;
+            featured: boolean;
+            isBestSeller: boolean;
+            isTrending: boolean;
+            isNewArrival: boolean;
+            discountPercent: number | null;
+            originalPrice: number | null;
+            status: string | null;
+            customisationRequired: boolean;
         }[];
         pagination: {
             page: number;
@@ -111,29 +130,31 @@ export declare class ArtisansController {
         };
     }>;
     createProduct(req: Request, dto: CreateArtisanProductDto): Promise<{
-        id: any;
-        name: any;
-        description: any;
+        id: number;
+        name: string;
+        description: string;
         priceRange: {
-            min: any;
-            max: any;
+            min: number;
+            max: number;
         };
-        currency: any;
-        estimatedDeliveryDays: any;
-        materials: any;
+        currency: string;
+        estimatedDeliveryDays: number;
+        materials: string;
         tags: string[];
-        images: any;
-        category: any;
-        providerId: any;
-        featured: any;
-        isBestSeller: any;
-        isTrending: any;
-        isNewArrival: any;
-        discountPercent: any;
-        originalPrice: any;
+        images: string[];
+        category: string | null;
+        providerId: number | null;
+        featured: boolean;
+        isBestSeller: boolean;
+        isTrending: boolean;
+        isNewArrival: boolean;
+        discountPercent: number | null;
+        originalPrice: number | null;
+        status: string | null;
+        customisationRequired: boolean;
     }>;
     uploadProductImage(req: Request, file: Express.Multer.File): Promise<{
-        imageUrl: string;
+        url: string;
     }>;
     uploadProfileImage(req: Request, file: Express.Multer.File): Promise<{
         url: string;
@@ -142,26 +163,28 @@ export declare class ArtisansController {
         url: string;
     }>;
     patchProduct(req: Request, id: string, dto: UpdateArtisanProductDto): Promise<{
-        id: any;
-        name: any;
-        description: any;
+        id: number;
+        name: string;
+        description: string;
         priceRange: {
-            min: any;
-            max: any;
+            min: number;
+            max: number;
         };
-        currency: any;
-        estimatedDeliveryDays: any;
-        materials: any;
+        currency: string;
+        estimatedDeliveryDays: number;
+        materials: string;
         tags: string[];
-        images: any;
-        category: any;
-        providerId: any;
-        featured: any;
-        isBestSeller: any;
-        isTrending: any;
-        isNewArrival: any;
-        discountPercent: any;
-        originalPrice: any;
+        images: string[];
+        category: string | null;
+        providerId: number | null;
+        featured: boolean;
+        isBestSeller: boolean;
+        isTrending: boolean;
+        isNewArrival: boolean;
+        discountPercent: number | null;
+        originalPrice: number | null;
+        status: string | null;
+        customisationRequired: boolean;
     }>;
     deleteProduct(req: Request, id: string): Promise<{
         success: boolean;

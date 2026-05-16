@@ -8,6 +8,8 @@ export declare class PaymentMethodsService {
         data: PaymentMethodDto[];
         total: number;
     }>;
+    private parseExpiry;
+    private assertNotExpired;
     create(userId: number, dto: CreatePaymentMethodDto): Promise<PaymentMethodDto>;
     remove(id: string, userId: number): Promise<void>;
     setDefault(id: string, userId: number): Promise<PaymentMethodDto>;

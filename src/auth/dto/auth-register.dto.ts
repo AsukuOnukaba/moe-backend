@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class AuthRegisterDto {
   @IsString()
@@ -19,5 +19,10 @@ export class AuthRegisterDto {
   @IsOptional()
   @IsIn(['customer', 'artisan'])
   role?: 'customer' | 'artisan';
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  serviceCategories?: string[];
 }
 

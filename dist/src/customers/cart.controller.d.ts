@@ -14,8 +14,9 @@ export declare class CartController {
         category: string;
         selectedSize: string;
         selectedBodyType: string | null;
-        selectedVariants: {};
-        measurements: {};
+        selectedVariants: Record<string, unknown>;
+        measurements: Record<string, unknown>;
+        customisation: Record<string, unknown> | null;
         notes: string | null;
         quantity: number;
     }[]>;
@@ -30,13 +31,11 @@ export declare class CartController {
         category: string;
         selectedSize: string;
         selectedBodyType: string | null;
-        selectedVariants: {};
-        measurements: {};
+        selectedVariants: Record<string, unknown>;
+        measurements: Record<string, unknown>;
+        customisation: Record<string, unknown> | null;
         notes: string | null;
         quantity: number;
-    } | {
-        message: string;
-        code: string;
     }>;
     patch(req: Request, id: string, body: any): Promise<{
         id: string;
@@ -49,22 +48,14 @@ export declare class CartController {
         category: string;
         selectedSize: string;
         selectedBodyType: string | null;
-        selectedVariants: {};
-        measurements: {};
+        selectedVariants: Record<string, unknown>;
+        measurements: Record<string, unknown>;
+        customisation: Record<string, unknown> | null;
         notes: string | null;
         quantity: number;
-    } | {
-        message: string;
-        code: string;
     }>;
     remove(req: Request, id: string): Promise<{
-        message: string;
-        code: string;
-        success?: undefined;
-    } | {
         success: boolean;
-        message?: undefined;
-        code?: undefined;
     }>;
     clear(req: Request): Promise<{
         success: boolean;

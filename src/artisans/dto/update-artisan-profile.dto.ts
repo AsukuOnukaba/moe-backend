@@ -68,6 +68,14 @@ export class UpdateArtisanProfileDto {
 
   @IsOptional()
   @IsBoolean()
+  rushOrderEnabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  rushOrderSurchargePercent?: number;
+
+  @IsOptional()
+  @IsBoolean()
   verified?: boolean;
 
   @IsOptional()

@@ -5,6 +5,16 @@ import { ProductsService } from './products.service';
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
 
+  @Get('customisation-template')
+  customisationTemplate(@Query('category') category: string) {
+    return this.products.getCustomisationTemplate(category ?? '');
+  }
+
+  @Get('filter-meta')
+  filterMeta() {
+    return this.products.getFilterMeta();
+  }
+
   @Get()
   list(@Query() query: any) {
     return this.products.listProducts(query);

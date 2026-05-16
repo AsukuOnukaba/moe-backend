@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { randomUUID } from 'crypto';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
@@ -14,17 +14,33 @@ type CartItem = {
   category: string;
   selectedSize: string;
   selectedBodyType: string | null;
-  selectedVariants: {};
-  measurements: {};
+  selectedVariants: Record<string, unknown>;
+  measurements: Record<string, unknown>;
+  customisation: Record<string, unknown> | null;
   notes: string | null;
   quantity: number;
 };
 
-// TEMP: in-memory cart until we add DB cart tables.
 const cartStore = new Map<number, CartItem[]>();
 
-function splitProviderName(providerProfile: any, user: any) {
+function splitProviderName(providerProfile: { brandName?: string | null } | null, user: { name?: string } | null) {
   return providerProfile?.brandName ?? user?.name ?? '';
+}
+
+function hasCustomisationPayload(body: Record<string, unknown>): boolean {
+  const customisation = body.customisation ?? body.customization;
+  if (customisation && typeof customisation === 'object' && Object.keys(customisation as object).length > 0) {
+    return true;
+  }
+  const measurements = body.measurements;
+  if (measurements && typeof measurements === 'object' && Object.keys(measurements as object).length > 0) {
+    return true;
+  }
+  const selectedVariants = body.selectedVariants;
+  if (selectedVariants && typeof selectedVariants === 'object' && Object.keys(selectedVariants as object).length > 0) {
+    return true;
+  }
+  return Boolean(body.selectedSize || body.selectedBodyType);
 }
 
 @Injectable()
@@ -40,18 +56,28 @@ export class CartService {
   }
 
   async list(user: AccessTokenPayload) {
-    const items = this.getCartForUser(user.sub);
-    return items;
+    return this.getCartForUser(user.sub);
   }
 
-  async add(user: AccessTokenPayload, body: any) {
+  async add(user: AccessTokenPayload, body: Record<string, unknown>) {
     const userId = user.sub;
     const productId = Number(body?.productId ?? body?.id ?? 0);
     const quantity = Math.max(1, Number(body?.quantity ?? 1));
-    if (!productId) return { message: 'Missing productId', code: 'VALIDATION_ERROR' };
+    if (!productId) {
+      throw new BadRequestException({ message: 'Missing productId', code: 'VALIDATION_ERROR' });
+    }
 
     const p = await this.prisma.product.findUnique({ where: { id: productId } });
-    if (!p) return { message: 'Product not found', code: 'RESOURCE_NOT_FOUND' };
+    if (!p) {
+      throw new BadRequestException({ message: 'Product not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    if (p.customisationRequired && !hasCustomisationPayload(body)) {
+      throw new BadRequestException({
+        message: 'Customisation is required for this product',
+        code: 'CUSTOMISATION_REQUIRED',
+      });
+    }
 
     const provider = p.providerId
       ? await this.prisma.user.findUnique({
@@ -60,23 +86,26 @@ export class CartService {
         })
       : null;
 
-    const basePrice = typeof body?.basePrice === 'number' ? body.basePrice : p.price;
-    const finalPrice =
-      typeof body?.finalPrice === 'number' ? body.finalPrice : basePrice;
+    const basePrice = typeof body?.basePrice === 'number' ? body.basePrice : (p.price ?? 0);
+    const finalPrice = typeof body?.finalPrice === 'number' ? body.finalPrice : basePrice;
 
     const item: CartItem = {
       id: randomUUID(),
       productId: p.id,
       productName: p.name,
       providerId: p.providerId,
-      providerName: splitProviderName(provider?.artisanProfile, provider),
+      providerName: splitProviderName(provider?.artisanProfile ?? null, provider),
       basePrice,
       finalPrice,
       category: p.category ?? '',
-      selectedSize: body?.selectedSize ?? 'M',
-      selectedBodyType: body?.selectedBodyType ?? null,
-      selectedVariants: body?.selectedVariants ?? {},
-      measurements: body?.measurements ?? {},
+      selectedSize: typeof body?.selectedSize === 'string' ? body.selectedSize : 'M',
+      selectedBodyType: (body?.selectedBodyType as string | null) ?? null,
+      selectedVariants: (body?.selectedVariants as Record<string, unknown>) ?? {},
+      measurements: (body?.measurements as Record<string, unknown>) ?? {},
+      customisation:
+        (body?.customisation as Record<string, unknown>) ??
+        (body?.customization as Record<string, unknown>) ??
+        null,
       notes: typeof body?.notes === 'string' ? body.notes : null,
       quantity,
     };
@@ -86,32 +115,35 @@ export class CartService {
     return item;
   }
 
-  async patch(user: AccessTokenPayload, cartItemId: string, body: any) {
-    const userId = user.sub;
-    const cart = this.getCartForUser(userId);
+  async patch(user: AccessTokenPayload, cartItemId: string, body: Record<string, unknown>) {
+    const cart = this.getCartForUser(user.sub);
     const idx = cart.findIndex((i) => i.id === cartItemId);
-    if (idx < 0) return { message: 'Not found', code: 'RESOURCE_NOT_FOUND' };
+    if (idx < 0) {
+      throw new BadRequestException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
 
     const item = cart[idx];
-    const quantity = body?.quantity !== undefined ? Math.max(1, Number(body.quantity)) : item.quantity;
-
     cart[idx] = {
       ...item,
-      quantity,
+      quantity: body?.quantity !== undefined ? Math.max(1, Number(body.quantity)) : item.quantity,
       notes: body?.notes !== undefined ? (typeof body.notes === 'string' ? body.notes : null) : item.notes,
-      selectedSize: body?.selectedSize !== undefined ? String(body.selectedSize) : item.selectedSize,
+      selectedSize:
+        body?.selectedSize !== undefined ? String(body.selectedSize) : item.selectedSize,
       selectedBodyType:
-        body?.selectedBodyType !== undefined ? (body.selectedBodyType as string | null) : item.selectedBodyType,
+        body?.selectedBodyType !== undefined
+          ? (body.selectedBodyType as string | null)
+          : item.selectedBodyType,
     };
 
     return cart[idx];
   }
 
   async remove(user: AccessTokenPayload, cartItemId: string) {
-    const userId = user.sub;
-    const cart = this.getCartForUser(userId);
+    const cart = this.getCartForUser(user.sub);
     const idx = cart.findIndex((i) => i.id === cartItemId);
-    if (idx < 0) return { message: 'Not found', code: 'RESOURCE_NOT_FOUND' };
+    if (idx < 0) {
+      throw new BadRequestException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
     cart.splice(idx, 1);
     return { success: true };
   }
@@ -122,4 +154,3 @@ export class CartService {
     return { success: true };
   }
 }
-

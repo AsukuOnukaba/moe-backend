@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
@@ -23,6 +21,9 @@ import { PaymentsModule } from './payments/payments.module';
 import { SearchModule } from './search/search.module';
 import { SupportModule } from './support/support.module';
 import { CustomizationModule } from './customization/customization.module';
+import { AdminModule } from './admin/admin.module';
+import { EmailModule } from './common/email/email.module';
+import { StorageModule } from './common/storage/storage.module';
 
 @Module({
   imports: [
@@ -31,10 +32,8 @@ import { CustomizationModule } from './customization/customization.module';
       validate: validateEnv,
       expandVariables: true,
     }),
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
-      serveRoot: '/uploads',
-    }),
+    EmailModule,
+    StorageModule,
     DatabaseModule,
     AuthModule,
     UsersModule,
@@ -52,6 +51,7 @@ import { CustomizationModule } from './customization/customization.module';
     SearchModule,
     SupportModule,
     CustomizationModule,
+    AdminModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

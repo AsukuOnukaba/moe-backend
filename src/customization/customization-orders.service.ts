@@ -1,14 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
+import { validateCustomisationPayload } from '../products/product-customisation.templates';
 
 type CustomizationOrder = {
   id: number;
   productId: number;
   customerId: number;
-  selectedVariants: Record<string, any>;
+  selectedVariants: Record<string, unknown>;
   selectedSize: string;
   selectedBodyType: string | null;
   selectedFootType: string | null;
-  measurements: Record<string, any>;
+  measurements: Record<string, unknown>;
+  customisation: Record<string, unknown>;
   notes: string | null;
   basePrice: number;
   variantModifierTotal: number;
@@ -22,40 +25,57 @@ type CustomizationOrder = {
   updatedAt: string;
 };
 
-type CustomRequest = {
-  id: number;
-  status: 'pending_review';
-};
-
 const customizationStore = new Map<number, CustomizationOrder>();
-const customRequestStore = new Map<number, CustomRequest>();
 let customizationIdSeq = 1;
-let customRequestIdSeq = 1;
 
 @Injectable()
 export class CustomizationOrdersService {
-  async create(customer: any, body: any) {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(customer: { sub: number }, body: Record<string, unknown>) {
     const productId = Number(body?.productId ?? 0);
-    if (!productId) return { message: 'Missing productId', code: 'VALIDATION_ERROR' };
+    if (!productId) {
+      return { message: 'Missing productId', code: 'VALIDATION_ERROR' };
+    }
+
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product?.category) {
+      throw new BadRequestException({ message: 'Product category required for customisation' });
+    }
+
+    const customisation =
+      (body.customisation as Record<string, unknown>) ??
+      (body.customization as Record<string, unknown>) ??
+      (body.measurements as Record<string, unknown>) ??
+      {};
+
+    const validation = validateCustomisationPayload(product.category, customisation);
+    if (!validation.valid) {
+      throw new BadRequestException({
+        message: `Unknown customisation keys: ${validation.unknownKeys.join(', ')}`,
+        code: 'INVALID_CUSTOMISATION',
+      });
+    }
 
     const now = new Date().toISOString();
     const customization: CustomizationOrder = {
       id: customizationIdSeq++,
       productId,
       customerId: customer.sub,
-      selectedVariants: body?.selectedVariants ?? {},
-      selectedSize: typeof body?.selectedSize === 'string' ? body.selectedSize : '',
-      selectedBodyType: body?.selectedBodyType ?? null,
-      selectedFootType: body?.selectedFootType ?? null,
-      measurements: body?.measurements ?? {},
-      notes: typeof body?.notes === 'string' ? body.notes : null,
-      basePrice: Number(body?.basePrice ?? 0),
-      variantModifierTotal: Number(body?.variantModifierTotal ?? 0),
-      customizationFee: Number(body?.customizationFee ?? 0),
-      finalPrice: Number(body?.finalPrice ?? 0),
-      rushOrder: Boolean(body?.rushOrder ?? false),
-      rushOrderCost: Number(body?.rushOrderCost ?? 0),
-      estimatedDeliveryDays: Number(body?.estimatedDeliveryDays ?? 7),
+      selectedVariants: (body.selectedVariants as Record<string, unknown>) ?? {},
+      selectedSize: typeof body.selectedSize === 'string' ? body.selectedSize : '',
+      selectedBodyType: (body.selectedBodyType as string | null) ?? null,
+      selectedFootType: (body.selectedFootType as string | null) ?? null,
+      measurements: (body.measurements as Record<string, unknown>) ?? {},
+      customisation,
+      notes: typeof body.notes === 'string' ? body.notes : null,
+      basePrice: Number(body.basePrice ?? 0),
+      variantModifierTotal: Number(body.variantModifierTotal ?? 0),
+      customizationFee: Number(body.customizationFee ?? 0),
+      finalPrice: Number(body.finalPrice ?? 0),
+      rushOrder: Boolean(body.rushOrder ?? false),
+      rushOrderCost: Number(body.rushOrderCost ?? 0),
+      estimatedDeliveryDays: Number(body.estimatedDeliveryDays ?? 7),
       status: 'submitted',
       createdAt: now,
       updatedAt: now,
@@ -65,7 +85,7 @@ export class CustomizationOrdersService {
     return customization;
   }
 
-  async getById(customer: any, id: number) {
+  async getById(customer: { sub: number }, id: number) {
     const item = customizationStore.get(id);
     if (!item || item.customerId !== customer.sub) {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
@@ -73,17 +93,7 @@ export class CustomizationOrdersService {
     return item;
   }
 
-  async createCustomRequest(customer: any, body: any) {
-    const now = new Date().toISOString();
-    const req: CustomRequest = {
-      id: customRequestIdSeq++,
-      status: 'pending_review',
-    };
-    customRequestStore.set(req.id, req);
-    // TEMP: store payload in memory not required by the spec response.
-    void now;
-    void body;
-    return req;
+  async createCustomRequest(_customer: { sub: number }, _body: Record<string, unknown>) {
+    return { id: customizationIdSeq++, status: 'pending_review' as const };
   }
 }
-

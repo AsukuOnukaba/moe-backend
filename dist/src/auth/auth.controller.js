@@ -17,8 +17,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
+const passport_1 = require("@nestjs/passport");
 const platform_express_1 = require("@nestjs/platform-express");
-const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const crypto_1 = require("crypto");
 const multer_1 = __importDefault(require("multer"));
@@ -29,17 +29,47 @@ const auth_refresh_dto_1 = require("./dto/auth-refresh.dto");
 const auth_profile_patch_dto_1 = require("./dto/auth-profile-patch.dto");
 const update_user_profile_dto_1 = require("./dto/update-user-profile.dto");
 const change_password_dto_1 = require("./dto/change-password.dto");
+const verify_email_dto_1 = require("./dto/verify-email.dto");
+const resend_otp_dto_1 = require("./dto/resend-otp.dto");
+const admin_verify_otp_dto_1 = require("./dto/admin-verify-otp.dto");
 const jwt_auth_guard_1 = require("./guards/jwt-auth.guard");
+const cloudinary_service_1 = require("../common/storage/cloudinary.service");
+const config_1 = require("@nestjs/config");
 let AuthController = class AuthController {
     auth;
-    constructor(auth) {
+    cloudinary;
+    config;
+    constructor(auth, cloudinary, config) {
         this.auth = auth;
+        this.cloudinary = cloudinary;
+        this.config = config;
     }
     async register(dto) {
         return this.auth.register(dto);
     }
     async login(dto) {
         return this.auth.login(dto);
+    }
+    verifyEmail(dto) {
+        return this.auth.verifyEmail(dto.email, dto.otp);
+    }
+    resendOtp(dto) {
+        return this.auth.resendOtp(dto.email);
+    }
+    verifyAdminOtp(dto) {
+        return this.auth.verifyAdminOtp(dto.email, dto.otp);
+    }
+    googleAuth() {
+        return;
+    }
+    async googleCallback(req, res) {
+        const result = await this.auth.handleGoogleLogin(req.user);
+        const redirect = this.config.get('GOOGLE_SUCCESS_REDIRECT') ??
+            'http://localhost:8080/auth/google/callback';
+        const url = new URL(redirect);
+        url.searchParams.set('token', result.token);
+        url.searchParams.set('refreshToken', result.refreshToken);
+        return res.redirect(url.toString());
     }
     async refresh(dto) {
         return this.auth.refresh(dto.refreshToken);
@@ -58,13 +88,9 @@ let AuthController = class AuthController {
         }
         const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
         const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
-        const uploadsDir = path_1.default.join(process.cwd(), 'uploads', 'avatars');
-        await fs_1.promises.mkdir(uploadsDir, { recursive: true });
-        const filePath = path_1.default.join(uploadsDir, filename);
-        await fs_1.promises.writeFile(filePath, file.buffer);
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
-        const avatarUrl = `${baseUrl}/uploads/avatars/${filename}`;
-        return this.auth.setAvatar(req.user.sub, avatarUrl);
+        const url = await this.cloudinary.uploadBuffer(file.buffer, 'avatars', filename);
+        await this.auth.setAvatar(req.user.sub, url);
+        return { url };
     }
     async logout(req) {
         const user = req.user;
@@ -94,6 +120,43 @@ __decorate([
     __metadata("design:paramtypes", [auth_login_dto_1.AuthLoginDto]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)('verify-email'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [verify_email_dto_1.VerifyEmailDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "verifyEmail", null);
+__decorate([
+    (0, common_1.Post)('resend-otp'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [resend_otp_dto_1.ResendOtpDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "resendOtp", null);
+__decorate([
+    (0, common_1.Post)('admin/verify-otp'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [admin_verify_otp_dto_1.AdminVerifyOtpDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "verifyAdminOtp", null);
+__decorate([
+    (0, common_1.Get)('google'),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)('google')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "googleAuth", null);
+__decorate([
+    (0, common_1.Get)('google/callback'),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)('google')),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "googleCallback", null);
 __decorate([
     (0, common_1.Post)('refresh-token'),
     __param(0, (0, common_1.Body)()),
@@ -159,6 +222,8 @@ __decorate([
 ], AuthController.prototype, "changePassword", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('auth'),
-    __metadata("design:paramtypes", [auth_service_1.AuthService])
+    __metadata("design:paramtypes", [auth_service_1.AuthService,
+        cloudinary_service_1.CloudinaryService,
+        config_1.ConfigService])
 ], AuthController);
 //# sourceMappingURL=auth.controller.js.map

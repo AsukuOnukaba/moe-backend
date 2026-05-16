@@ -17,6 +17,7 @@ class AuthRegisterDto {
     password;
     phone;
     role;
+    serviceCategories;
 }
 exports.AuthRegisterDto = AuthRegisterDto;
 __decorate([
@@ -43,4 +44,10 @@ __decorate([
     (0, class_validator_1.IsIn)(['customer', 'artisan']),
     __metadata("design:type", String)
 ], AuthRegisterDto.prototype, "role", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], AuthRegisterDto.prototype, "serviceCategories", void 0);
 //# sourceMappingURL=auth-register.dto.js.map

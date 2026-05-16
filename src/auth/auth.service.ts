@@ -1,8 +1,10 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { EmailService } from '../common/email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -44,7 +46,28 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly email: EmailService,
   ) {}
+
+  private generateOtp(): string {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  private isEmailVerified(user: {
+    emailVerified: boolean | null;
+    requiresEmailVerification: boolean;
+  }): boolean {
+    if (!user.requiresEmailVerification) return true;
+    return user.emailVerified === true;
+  }
+
+  private async sendEmailOtp(user: { email: string; name: string }, otp: string) {
+    await this.email.sendMail(
+      user.email,
+      'Verify your MoE email',
+      `Hi ${user.name},\n\nYour verification code is: ${otp}\n\nThis code expires in 15 minutes.`,
+    );
+  }
 
   private accessExpiresIn(): string {
     return this.config.get<string>('JWT_ACCESS_EXPIRES_IN', '20m');
@@ -134,6 +157,7 @@ export class AuthService {
     password: string;
     phone?: string;
     role?: 'customer' | 'artisan';
+    serviceCategories?: string[];
   }) {
     const role: MoeRole = (input.role ?? 'customer') as MoeRole;
     const existing = await this.prisma.user.findUnique({
@@ -148,30 +172,45 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(input.password, 12);
+    const otp = this.generateOtp();
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000);
+
     const user = await this.prisma.user.create({
       data: {
         name: input.name,
         email: input.email.toLowerCase(),
         passwordHash,
         phone: input.phone ?? null,
+        emailVerified: false,
+        requiresEmailVerification: true,
+        emailOtp: otp,
+        emailOtpExpiresAt: otpExpires,
       },
     });
 
+    await this.sendEmailOtp(user, otp);
+
     await this.ensureUserRole(user.id, role);
     if (role === 'artisan') {
+      const serviceCategories =
+        input.serviceCategories && input.serviceCategories.length > 0
+          ? input.serviceCategories.join(',')
+          : null;
       await this.prisma.artisanProfile.create({
         data: {
           userId: user.id,
           brandName: input.name,
           heroImage: null,
+          serviceCategories,
+          status: 'pending',
         },
       });
     }
-    const tokens = await this.issueTokens(user, role);
 
     return {
-      ...tokens,
-      user: await this.toProfile(user, role),
+      message: 'Registration successful. Please verify your email.',
+      email: user.email,
+      requiresEmailVerification: true,
     };
   }
 
@@ -188,11 +227,143 @@ export class AuthService {
     }
 
     const role = await this.resolvePrimaryRole(user.id);
+
+    if (!this.isEmailVerified(user)) {
+      throw new ForbiddenException({
+        message: 'Email not verified',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
+    }
+
+    if (role === 'admin') {
+      const otp = this.generateOtp();
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          adminOtp: otp,
+          adminOtpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+      });
+      await this.email.sendMail(
+        user.email,
+        'Admin login verification',
+        `Your admin login code is: ${otp}\n\nThis code expires in 10 minutes.`,
+      );
+      return { requiresOtp: true, email: user.email };
+    }
+
     const tokens = await this.issueTokens(user, role);
     return {
       ...tokens,
       user: await this.toProfile(user, role),
     };
+  }
+
+  async verifyEmail(email: string, otp: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+    if (!user || !user.emailOtp || user.emailOtp !== otp) {
+      throw authError('Invalid OTP', 'AUTH_INVALID_CREDENTIALS');
+    }
+    if (!user.emailOtpExpiresAt || user.emailOtpExpiresAt.getTime() < Date.now()) {
+      throw authError('OTP expired', 'AUTH_INVALID_CREDENTIALS');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: true,
+        emailOtp: null,
+        emailOtpExpiresAt: null,
+      },
+    });
+
+    const role = await this.resolvePrimaryRole(updated.id);
+    const tokens = await this.issueTokens(updated, role);
+    return { ...tokens, user: await this.toProfile(updated, role) };
+  }
+
+  async resendOtp(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+    if (!user || !user.requiresEmailVerification || user.emailVerified) {
+      return { message: 'If the account exists, a new OTP has been sent.' };
+    }
+
+    const otp = this.generateOtp();
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailOtp: otp,
+        emailOtpExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      },
+    });
+    await this.sendEmailOtp(user, otp);
+    return { message: 'If the account exists, a new OTP has been sent.' };
+  }
+
+  async verifyAdminOtp(email: string, otp: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+    if (!user || user.adminOtp !== otp) {
+      throw authError('Invalid OTP', 'AUTH_INVALID_CREDENTIALS');
+    }
+    if (!user.adminOtpExpiresAt || user.adminOtpExpiresAt.getTime() < Date.now()) {
+      throw authError('OTP expired', 'AUTH_INVALID_CREDENTIALS');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { adminOtp: null, adminOtpExpiresAt: null },
+    });
+
+    const tokens = await this.issueTokens(user, 'admin');
+    return { ...tokens, user: await this.toProfile(user, 'admin') };
+  }
+
+  async handleGoogleLogin(profile: {
+    googleId: string;
+    email: string;
+    name: string;
+    avatarUrl: string | null;
+  }) {
+    let user = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ googleId: profile.googleId }, { email: profile.email }],
+      },
+    });
+
+    if (!user) {
+      const passwordHash = await bcrypt.hash(randomUUID(), 12);
+      user = await this.prisma.user.create({
+        data: {
+          name: profile.name,
+          email: profile.email,
+          passwordHash,
+          googleId: profile.googleId,
+          avatarUrl: profile.avatarUrl,
+          emailVerified: true,
+          requiresEmailVerification: false,
+        },
+      });
+      await this.ensureUserRole(user.id, 'customer');
+    } else if (!user.googleId) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId: profile.googleId,
+          emailVerified: true,
+          avatarUrl: user.avatarUrl ?? profile.avatarUrl,
+        },
+      });
+    }
+
+    const role = await this.resolvePrimaryRole(user.id);
+    const tokens = await this.issueTokens(user, role);
+    return { ...tokens, user: await this.toProfile(user, role) };
   }
 
   async refresh(refreshToken: string) {

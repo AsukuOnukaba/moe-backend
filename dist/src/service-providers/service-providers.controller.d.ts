@@ -38,6 +38,7 @@ export declare class ServiceProvidersController {
             coverImageUrl: any;
             customOrdersEnabled: any;
             category: any;
+            location: any;
             styleTags: string[];
             serviceCategories: string[];
         }[];
@@ -73,6 +74,7 @@ export declare class ServiceProvidersController {
         coverImageUrl: any;
         customOrdersEnabled: any;
         category: any;
+        location: any;
         styleTags: string[];
         serviceCategories: string[];
     }>;
@@ -82,8 +84,8 @@ export declare class ServiceProvidersController {
             name: string;
             description: string;
             priceRange: {
-                min: number | null;
-                max: number | null;
+                min: number;
+                max: number;
             };
             currency: string;
             estimatedDeliveryDays: number;
@@ -98,6 +100,8 @@ export declare class ServiceProvidersController {
             isNewArrival: boolean;
             discountPercent: number | null;
             originalPrice: number | null;
+            status: string | null;
+            customisationRequired: boolean;
         }[];
         pagination: {
             page: number;
@@ -132,6 +136,7 @@ export declare class ServiceProvidersController {
             coverImageUrl: any;
             customOrdersEnabled: any;
             category: any;
+            location: any;
             styleTags: string[];
             serviceCategories: string[];
         }[];

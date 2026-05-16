@@ -22,16 +22,40 @@ let PaymentMethodsService = class PaymentMethodsService {
             where: { userId },
             orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
         });
-        const data = items.map((item) => this.toDto(item));
-        return { data, total: items.length };
+        return { data: items.map((item) => this.toDto(item)), total: items.length };
+    }
+    parseExpiry(expiry) {
+        const match = /^(\d{2})\/(\d{2})$/.exec(expiry.trim());
+        if (!match) {
+            throw new common_1.BadRequestException({ message: 'Invalid expiry format', code: 'VALIDATION_ERROR' });
+        }
+        const month = Number(match[1]);
+        const year = 2000 + Number(match[2]);
+        return { month, year };
+    }
+    assertNotExpired(month, year) {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
+        if (year < currentYear || (year === currentYear && month < currentMonth)) {
+            throw new common_1.BadRequestException({
+                message: 'Card has expired',
+                code: 'CARD_EXPIRED',
+            });
+        }
     }
     async create(userId, dto) {
+        const { month, year } = this.parseExpiry(dto.expiry);
+        this.assertNotExpired(month, year);
         const created = await this.prisma.paymentMethod.create({
             data: {
                 userId,
                 brand: dto.brand,
                 last4: dto.last4,
                 expiry: dto.expiry,
+                expiryMonth: month,
+                expiryYear: year,
+                processorToken: dto.processorToken ?? null,
                 cardholderName: dto.cardholderName,
                 billingAddressId: dto.billingAddressId,
                 isDefault: false,

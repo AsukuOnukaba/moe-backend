@@ -23,6 +23,10 @@ type Order = {
     isCustomOrder: boolean;
     status: string;
     price: number | null;
+    basePrice: number | null;
+    rushSurcharge: number | null;
+    rushOrder: boolean;
+    customisationData: Record<string, unknown> | null;
     currency: string;
     shippingAddress: ShippingAddress;
     paymentMethod: string;
@@ -35,15 +39,15 @@ export declare class OrdersService {
     private readonly prisma;
     constructor(prisma: PrismaService);
     private toOrderResponse;
-    list(user: AccessTokenPayload, query: any): Promise<{
+    list(user: AccessTokenPayload, query: Record<string, unknown>): Promise<{
         data: Order[];
         total: number;
     }>;
     getById(user: AccessTokenPayload, orderId: string): Promise<Order | null>;
-    create(user: AccessTokenPayload, body: any): Promise<Order | {
+    create(user: AccessTokenPayload, body: Record<string, unknown>): Promise<Order | {
         message: string;
         code: string;
     }>;
-    patch(user: AccessTokenPayload, orderId: string, body: any): Promise<Order | null>;
+    patch(user: AccessTokenPayload, orderId: string, body: Record<string, unknown>): Promise<Order | null>;
 }
 export {};

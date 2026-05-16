@@ -4,26 +4,28 @@ export declare class SearchService {
     constructor(prisma: PrismaService);
     search(q: string, type: string): Promise<{
         products: {
-            id: any;
-            name: any;
-            description: any;
+            id: number;
+            name: string;
+            description: string;
             priceRange: {
-                min: any;
-                max: any;
+                min: number;
+                max: number;
             };
-            currency: any;
-            estimatedDeliveryDays: any;
-            materials: any;
+            currency: string;
+            estimatedDeliveryDays: number;
+            materials: string;
             tags: string[];
-            images: any;
-            category: any;
-            providerId: any;
-            featured: any;
-            isBestSeller: any;
-            isTrending: any;
-            isNewArrival: any;
-            discountPercent: any;
-            originalPrice: any;
+            images: string[];
+            category: string | null;
+            providerId: number | null;
+            featured: boolean;
+            isBestSeller: boolean;
+            isTrending: boolean;
+            isNewArrival: boolean;
+            discountPercent: number | null;
+            originalPrice: number | null;
+            status: string | null;
+            customisationRequired: boolean;
         }[];
         providers: {
             id: any;

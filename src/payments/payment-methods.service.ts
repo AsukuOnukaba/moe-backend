@@ -14,14 +14,34 @@ export class PaymentMethodsService {
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
     });
 
-    const data = items.map((item) => this.toDto(item));
-    return { data, total: items.length };
+    return { data: items.map((item) => this.toDto(item)), total: items.length };
+  }
+
+  private parseExpiry(expiry: string): { month: number; year: number } {
+    const match = /^(\d{2})\/(\d{2})$/.exec(expiry.trim());
+    if (!match) {
+      throw new BadRequestException({ message: 'Invalid expiry format', code: 'VALIDATION_ERROR' });
+    }
+    const month = Number(match[1]);
+    const year = 2000 + Number(match[2]);
+    return { month, year };
+  }
+
+  private assertNotExpired(month: number, year: number) {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    if (year < currentYear || (year === currentYear && month < currentMonth)) {
+      throw new BadRequestException({
+        message: 'Card has expired',
+        code: 'CARD_EXPIRED',
+      });
+    }
   }
 
   async create(userId: number, dto: CreatePaymentMethodDto): Promise<PaymentMethodDto> {
-    // TODO: In production, this should accept only a Paystack/Stripe token
-    // Raw PAN/CVV must NEVER reach the backend
-    // Only safe fields are stored: brand, last4, expiry, cardholderName, billingAddressId
+    const { month, year } = this.parseExpiry(dto.expiry);
+    this.assertNotExpired(month, year);
 
     const created = await this.prisma.paymentMethod.create({
       data: {
@@ -29,6 +49,9 @@ export class PaymentMethodsService {
         brand: dto.brand,
         last4: dto.last4,
         expiry: dto.expiry,
+        expiryMonth: month,
+        expiryYear: year,
+        processorToken: dto.processorToken ?? null,
         cardholderName: dto.cardholderName,
         billingAddressId: dto.billingAddressId,
         isDefault: false,
@@ -40,36 +63,29 @@ export class PaymentMethodsService {
 
   async remove(id: string, userId: number): Promise<void> {
     const existing = await this.prisma.paymentMethod.findUnique({ where: { id } });
-
     if (!existing) {
       throw new BadRequestException({ message: 'Payment method not found' });
     }
-
     if (existing.userId !== userId) {
       throw new ForbiddenException({ message: 'Forbidden' });
     }
-
     await this.prisma.paymentMethod.delete({ where: { id } });
   }
 
   async setDefault(id: string, userId: number): Promise<PaymentMethodDto> {
     const existing = await this.prisma.paymentMethod.findUnique({ where: { id } });
-
     if (!existing) {
       throw new BadRequestException({ message: 'Payment method not found' });
     }
-
     if (existing.userId !== userId) {
       throw new ForbiddenException({ message: 'Forbidden' });
     }
 
-    // Clear all other defaults for this user
     await this.prisma.paymentMethod.updateMany({
       where: { userId, id: { not: id } },
       data: { isDefault: false },
     });
 
-    // Set this one as default
     const updated = await this.prisma.paymentMethod.update({
       where: { id },
       data: { isDefault: true },
@@ -78,7 +94,16 @@ export class PaymentMethodsService {
     return this.toDto(updated);
   }
 
-  private toDto(item: any): PaymentMethodDto {
+  private toDto(item: {
+    id: string;
+    brand: string;
+    last4: string;
+    expiry: string;
+    cardholderName: string;
+    billingAddressId: number | null;
+    isDefault: boolean;
+    createdAt: Date;
+  }): PaymentMethodDto {
     return {
       id: item.id,
       brand: item.brand,

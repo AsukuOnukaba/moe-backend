@@ -1,3 +1,4 @@
+import { EmailService } from '../common/email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
@@ -8,7 +9,11 @@ export declare class AuthService {
     private readonly prisma;
     private readonly jwt;
     private readonly config;
-    constructor(prisma: PrismaService, jwt: JwtService, config: ConfigService);
+    private readonly email;
+    constructor(prisma: PrismaService, jwt: JwtService, config: ConfigService, email: EmailService);
+    private generateOtp;
+    private isEmailVerified;
+    private sendEmailOtp;
     private accessExpiresIn;
     private refreshExpiresIn;
     private accessSecret;
@@ -23,7 +28,52 @@ export declare class AuthService {
         password: string;
         phone?: string;
         role?: 'customer' | 'artisan';
+        serviceCategories?: string[];
     }): Promise<{
+        message: string;
+        email: string;
+        requiresEmailVerification: boolean;
+    }>;
+    login(input: {
+        email: string;
+        password: string;
+    }): Promise<{
+        requiresOtp: boolean;
+        email: string;
+    } | {
+        user: {
+            preferences: null;
+            createdAt: string;
+            artisanProfile?: {
+                brandName: string;
+                about: string | null;
+                city: string | null;
+                state: string | null;
+                category: string | null;
+                styleTags: string[];
+                serviceCategories: string[];
+                heroImage: string | null;
+                verified: boolean;
+                featured: boolean;
+                estimatedDeliveryDays: number;
+                customOrdersEnabled: boolean;
+                rating: number;
+                reviewCount: number;
+            } | undefined;
+            id: number;
+            username: string;
+            name: string;
+            email: string;
+            phone: string | null;
+            avatarUrl: string | null;
+            role: MoeRole;
+        };
+        token: string;
+        refreshToken: string;
+        requiresOtp?: undefined;
+        email?: undefined;
+    }>;
+    verifyEmail(email: string, otp: string): Promise<{
         user: {
             preferences: null;
             createdAt: string;
@@ -54,9 +104,45 @@ export declare class AuthService {
         token: string;
         refreshToken: string;
     }>;
-    login(input: {
+    resendOtp(email: string): Promise<{
+        message: string;
+    }>;
+    verifyAdminOtp(email: string, otp: string): Promise<{
+        user: {
+            preferences: null;
+            createdAt: string;
+            artisanProfile?: {
+                brandName: string;
+                about: string | null;
+                city: string | null;
+                state: string | null;
+                category: string | null;
+                styleTags: string[];
+                serviceCategories: string[];
+                heroImage: string | null;
+                verified: boolean;
+                featured: boolean;
+                estimatedDeliveryDays: number;
+                customOrdersEnabled: boolean;
+                rating: number;
+                reviewCount: number;
+            } | undefined;
+            id: number;
+            username: string;
+            name: string;
+            email: string;
+            phone: string | null;
+            avatarUrl: string | null;
+            role: MoeRole;
+        };
+        token: string;
+        refreshToken: string;
+    }>;
+    handleGoogleLogin(profile: {
+        googleId: string;
         email: string;
-        password: string;
+        name: string;
+        avatarUrl: string | null;
     }): Promise<{
         user: {
             preferences: null;

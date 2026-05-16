@@ -16,6 +16,10 @@ export declare class OrdersController {
             isCustomOrder: boolean;
             status: string;
             price: number | null;
+            basePrice: number | null;
+            rushSurcharge: number | null;
+            rushOrder: boolean;
+            customisationData: Record<string, unknown> | null;
             currency: string;
             shippingAddress: {
                 firstName: string;
@@ -48,6 +52,10 @@ export declare class OrdersController {
         isCustomOrder: boolean;
         status: string;
         price: number | null;
+        basePrice: number | null;
+        rushSurcharge: number | null;
+        rushOrder: boolean;
+        customisationData: Record<string, unknown> | null;
         currency: string;
         shippingAddress: {
             firstName: string;
@@ -78,6 +86,10 @@ export declare class OrdersController {
         isCustomOrder: boolean;
         status: string;
         price: number | null;
+        basePrice: number | null;
+        rushSurcharge: number | null;
+        rushOrder: boolean;
+        customisationData: Record<string, unknown> | null;
         currency: string;
         shippingAddress: {
             firstName: string;
@@ -111,6 +123,10 @@ export declare class OrdersController {
         isCustomOrder: boolean;
         status: string;
         price: number | null;
+        basePrice: number | null;
+        rushSurcharge: number | null;
+        rushOrder: boolean;
+        customisationData: Record<string, unknown> | null;
         currency: string;
         shippingAddress: {
             firstName: string;

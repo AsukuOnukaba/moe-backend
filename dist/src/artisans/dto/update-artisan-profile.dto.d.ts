@@ -15,6 +15,8 @@ export declare class UpdateArtisanProfileDto {
     coverImageUrl?: string | null;
     images?: string[] | null;
     customOrdersEnabled?: boolean;
+    rushOrderEnabled?: boolean;
+    rushOrderSurchargePercent?: number;
     verified?: boolean;
     featured?: boolean;
     estimatedDeliveryDays?: number;

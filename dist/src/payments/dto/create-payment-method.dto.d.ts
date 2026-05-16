@@ -4,4 +4,5 @@ export declare class CreatePaymentMethodDto {
     expiry: string;
     cardholderName: string;
     billingAddressId?: number;
+    processorToken?: string;
 }

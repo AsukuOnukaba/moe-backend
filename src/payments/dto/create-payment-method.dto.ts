@@ -17,5 +17,9 @@ export class CreatePaymentMethodDto {
 
   @IsOptional()
   @IsNumber()
-  billingAddressId?: number; // FK to Address, optional
+  billingAddressId?: number;
+
+  @IsOptional()
+  @IsString()
+  processorToken?: string;
 }

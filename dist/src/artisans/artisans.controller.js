@@ -18,19 +18,27 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ArtisansController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
-const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const crypto_1 = require("crypto");
 const multer_1 = __importDefault(require("multer"));
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const cloudinary_service_1 = require("../common/storage/cloudinary.service");
 const artisans_service_1 = require("./artisans.service");
 const update_artisan_profile_dto_1 = require("./dto/update-artisan-profile.dto");
 const create_artisan_product_dto_1 = require("./dto/create-artisan-product.dto");
 const update_artisan_product_dto_1 = require("./dto/update-artisan-product.dto");
 let ArtisansController = class ArtisansController {
     artisans;
-    constructor(artisans) {
+    cloudinary;
+    constructor(artisans, cloudinary) {
         this.artisans = artisans;
+        this.cloudinary = cloudinary;
+    }
+    filterMeta() {
+        return this.artisans.getFilterMeta();
+    }
+    rushOrderConfig(id) {
+        return this.artisans.getRushOrderConfig(Number(id));
     }
     async getAll(page, pageSize, category) {
         const pageNum = page ? Number(page) : 1;
@@ -61,13 +69,8 @@ let ArtisansController = class ArtisansController {
         }
         const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
         const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
-        const uploadsDir = path_1.default.join(process.cwd(), 'uploads', 'products');
-        await fs_1.promises.mkdir(uploadsDir, { recursive: true });
-        const filePath = path_1.default.join(uploadsDir, filename);
-        await fs_1.promises.writeFile(filePath, file.buffer);
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
-        const imageUrl = `${baseUrl}/uploads/products/${filename}`;
-        return { imageUrl };
+        const imageUrl = await this.cloudinary.uploadBuffer(file.buffer, 'products', filename);
+        return { url: imageUrl };
     }
     async uploadProfileImage(req, file) {
         if (!file) {
@@ -75,12 +78,7 @@ let ArtisansController = class ArtisansController {
         }
         const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
         const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
-        const uploadsDir = path_1.default.join(process.cwd(), 'uploads', 'artisans');
-        await fs_1.promises.mkdir(uploadsDir, { recursive: true });
-        const filePath = path_1.default.join(uploadsDir, filename);
-        await fs_1.promises.writeFile(filePath, file.buffer);
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
-        const url = `${baseUrl}/uploads/artisans/${filename}`;
+        const url = await this.cloudinary.uploadBuffer(file.buffer, 'artisans', filename);
         return { url };
     }
     async uploadCoverImage(req, file) {
@@ -89,12 +87,7 @@ let ArtisansController = class ArtisansController {
         }
         const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
         const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
-        const uploadsDir = path_1.default.join(process.cwd(), 'uploads', 'artisans');
-        await fs_1.promises.mkdir(uploadsDir, { recursive: true });
-        const filePath = path_1.default.join(uploadsDir, filename);
-        await fs_1.promises.writeFile(filePath, file.buffer);
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
-        const url = `${baseUrl}/uploads/artisans/${filename}`;
+        const url = await this.cloudinary.uploadBuffer(file.buffer, 'artisans/covers', filename);
         return { url };
     }
     async patchProduct(req, id, dto) {
@@ -107,6 +100,19 @@ let ArtisansController = class ArtisansController {
     }
 };
 exports.ArtisansController = ArtisansController;
+__decorate([
+    (0, common_1.Get)('filter-meta'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], ArtisansController.prototype, "filterMeta", null);
+__decorate([
+    (0, common_1.Get)(':id/rush-order-config'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], ArtisansController.prototype, "rushOrderConfig", null);
 __decorate([
     (0, common_1.Get)(),
     __param(0, (0, common_1.Query)('page')),
@@ -232,6 +238,7 @@ __decorate([
 ], ArtisansController.prototype, "deleteProduct", null);
 exports.ArtisansController = ArtisansController = __decorate([
     (0, common_1.Controller)('artisans'),
-    __metadata("design:paramtypes", [artisans_service_1.ArtisansService])
+    __metadata("design:paramtypes", [artisans_service_1.ArtisansService,
+        cloudinary_service_1.CloudinaryService])
 ], ArtisansController);
 //# sourceMappingURL=artisans.controller.js.map

@@ -8,20 +8,27 @@ datasource db {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  name         String
-  email        String   @unique
-  passwordHash String
-  phone        String?
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                        Int       @id @default(autoincrement())
+  name                      String
+  email                     String    @unique
+  passwordHash              String
+  phone                     String?
+  avatarUrl                 String?
+  googleId                  String?   @unique
+  emailVerified             Boolean?
+  requiresEmailVerification Boolean   @default(false)
+  emailOtp                  String?
+  emailOtpExpiresAt         DateTime?
+  adminOtp                  String?
+  adminOtpExpiresAt         DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
-  roles            UserRole[]
-  refreshTokens    RefreshToken[]
-  addresses        Address[]
-  wishlistItems    WishlistItem[]
-  paymentMethods   PaymentMethod[]
+  roles          UserRole[]
+  refreshTokens  RefreshToken[]
+  addresses      Address[]
+  wishlistItems  WishlistItem[]
+  paymentMethods PaymentMethod[]
 
   artisanProfile ArtisanProfile?
   products       Product[]
@@ -39,8 +46,8 @@ model Address {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paymentMethods   PaymentMethod[]
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentMethods PaymentMethod[]
 
   @@index([userId])
 }
@@ -68,20 +75,25 @@ model ArtisanProfile {
   coverImageUrl     String?
   images            String[]
 
-  customOrdersEnabled Boolean @default(false)
-  verified            Boolean @default(false)
-  featured            Boolean @default(false)
+  status          String  @default("pending")
+  rejectionReason String?
+
+  customOrdersEnabled       Boolean @default(false)
+  rushOrderEnabled          Boolean @default(false)
+  rushOrderSurchargePercent Float   @default(25)
+  verified                  Boolean @default(false)
+  featured                  Boolean @default(false)
 
   estimatedDeliveryDays Int   @default(7)
   rating                Float @default(0)
   reviewCount           Int   @default(0)
 
-  paymentSchedule          String?
-  depositPercentage        Float?
-  refundPolicy             String?
-  acceptedPaymentMethods   String[]
-  installmentsAvailable    Boolean  @default(false)
-  installmentDetails       String?
+  paymentSchedule        String?
+  depositPercentage      Float?
+  refundPolicy           String?
+  acceptedPaymentMethods String[]
+  installmentsAvailable  Boolean  @default(false)
+  installmentDetails     String?
 
   products Product[]
 
@@ -117,20 +129,22 @@ model RefreshToken {
 }
 
 model Product {
-  id            Int      @id @default(autoincrement())
-  name          String
-  description   String?
-  category      String?
-  price         Float?
-  priceMin      Float?
-  priceMax      Float?
-  originalPrice Float?
-  currency      String   @default("NGN")
-  imageUrl      String?
-  images        String[]
-  materials     String?
-  tags          String?
-  status        String   @default("ACTIVE")
+  id                    Int      @id @default(autoincrement())
+  name                  String
+  description           String?
+  category              String?
+  price                 Float?
+  priceMin              Float?
+  priceMax              Float?
+  originalPrice         Float?
+  currency              String   @default("NGN")
+  imageUrl              String?
+  images                String[]
+  materials             String?
+  tags                  String?
+  status                String   @default("pending")
+  rejectionReason       String?
+  customisationRequired Boolean  @default(false)
 
   providerId Int?
   provider   User? @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -154,6 +168,7 @@ model Product {
   @@index([providerId])
   @@index([artisanId])
   @@index([category])
+  @@index([status])
 }
 
 model WishlistItem {
@@ -176,6 +191,9 @@ model PaymentMethod {
   brand            String
   last4            String
   expiry           String
+  expiryMonth      Int?
+  expiryYear       Int?
+  processorToken   String?
   cardholderName   String
   billingAddressId Int?
   isDefault        Boolean  @default(false)
@@ -201,6 +219,10 @@ model Order {
   isCustomOrder        Boolean @default(false)
   status               String  @default("pending")
   price                Float?
+  basePrice            Float?
+  rushSurcharge        Float?
+  rushOrder            Boolean @default(false)
+  customisationData    Json?
   currency             String  @default("NGN")
   paymentMethod        String  @default("bank_transfer")
   paymentReference     String?

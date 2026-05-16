@@ -17,6 +17,7 @@ class CreatePaymentMethodDto {
     expiry;
     cardholderName;
     billingAddressId;
+    processorToken;
 }
 exports.CreatePaymentMethodDto = CreatePaymentMethodDto;
 __decorate([
@@ -42,4 +43,9 @@ __decorate([
     (0, class_validator_1.IsNumber)(),
     __metadata("design:type", Number)
 ], CreatePaymentMethodDto.prototype, "billingAddressId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreatePaymentMethodDto.prototype, "processorToken", void 0);
 //# sourceMappingURL=create-payment-method.dto.js.map

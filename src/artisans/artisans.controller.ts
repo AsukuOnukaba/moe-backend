@@ -15,11 +15,11 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
-import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import multer from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CloudinaryService } from '../common/storage/cloudinary.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { ArtisansService } from './artisans.service';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
@@ -28,7 +28,20 @@ import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 
 @Controller('artisans')
 export class ArtisansController {
-  constructor(private readonly artisans: ArtisansService) {}
+  constructor(
+    private readonly artisans: ArtisansService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
+
+  @Get('filter-meta')
+  filterMeta() {
+    return this.artisans.getFilterMeta();
+  }
+
+  @Get(':id/rush-order-config')
+  rushOrderConfig(@Param('id') id: string) {
+    return this.artisans.getRushOrderConfig(Number(id));
+  }
 
   @Get()
   async getAll(
@@ -93,14 +106,12 @@ export class ArtisansController {
 
     const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
     const filename = `${randomUUID()}${ext}`;
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'products');
-    await fs.mkdir(uploadsDir, { recursive: true });
-    const filePath = path.join(uploadsDir, filename);
-    await fs.writeFile(filePath, file.buffer);
-
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const imageUrl = `${baseUrl}/uploads/products/${filename}`;
-    return { imageUrl };
+    const imageUrl = await this.cloudinary.uploadBuffer(
+      file.buffer,
+      'products',
+      filename,
+    );
+    return { url: imageUrl };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -134,13 +145,11 @@ export class ArtisansController {
 
     const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
     const filename = `${randomUUID()}${ext}`;
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'artisans');
-    await fs.mkdir(uploadsDir, { recursive: true });
-    const filePath = path.join(uploadsDir, filename);
-    await fs.writeFile(filePath, file.buffer);
-
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const url = `${baseUrl}/uploads/artisans/${filename}`;
+    const url = await this.cloudinary.uploadBuffer(
+      file.buffer,
+      'artisans',
+      filename,
+    );
     return { url };
   }
 
@@ -175,13 +184,11 @@ export class ArtisansController {
 
     const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
     const filename = `${randomUUID()}${ext}`;
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'artisans');
-    await fs.mkdir(uploadsDir, { recursive: true });
-    const filePath = path.join(uploadsDir, filename);
-    await fs.writeFile(filePath, file.buffer);
-
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const url = `${baseUrl}/uploads/artisans/${filename}`;
+    const url = await this.cloudinary.uploadBuffer(
+      file.buffer,
+      'artisans/covers',
+      filename,
+    );
     return { url };
   }
 

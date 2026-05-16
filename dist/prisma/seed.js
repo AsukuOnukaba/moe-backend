@@ -105,6 +105,11 @@ const ARTISANS = [
         ],
     },
 ];
+const ADMIN_ACCOUNTS = [
+    { name: 'Admin User', email: 'asukuonukaba@gmail.com' },
+    { name: 'Admin User', email: 'tayuzeee@gmail.com' },
+    { name: 'Admin User', email: 'Smartlynks97@gmail.com' },
+];
 async function main() {
     console.log('🌱 Seeding marketplace data...');
     await prisma.role.upsert({
@@ -112,6 +117,33 @@ async function main() {
         update: {},
         create: { name: 'artisan' },
     });
+    await prisma.role.upsert({
+        where: { name: 'admin' },
+        update: {},
+        create: { name: 'admin' },
+    });
+    const adminRole = await prisma.role.findUnique({ where: { name: 'admin' } });
+    const adminPassword = await (0, bcryptjs_1.hash)('password123', 12);
+    for (const admin of ADMIN_ACCOUNTS) {
+        const existing = await prisma.user.findUnique({ where: { email: admin.email.toLowerCase() } });
+        if (existing)
+            continue;
+        const user = await prisma.user.create({
+            data: {
+                name: admin.name,
+                email: admin.email.toLowerCase(),
+                passwordHash: adminPassword,
+                emailVerified: true,
+                requiresEmailVerification: false,
+            },
+        });
+        if (adminRole) {
+            await prisma.userRole.create({
+                data: { userId: user.id, roleId: adminRole.id },
+            });
+        }
+        console.log(`  ✅ Created admin: ${admin.email}`);
+    }
     for (const artisan of ARTISANS) {
         const hashedPassword = await (0, bcryptjs_1.hash)('Password123!', 12);
         const user = await prisma.user.create({
@@ -145,19 +177,20 @@ async function main() {
                 images: artisan.business.images,
                 rating: Math.round((3.5 + Math.random() * 1.5) * 10) / 10,
                 verified: true,
+                status: 'approved',
                 products: {
                     create: artisan.products.map((p) => ({
                         name: p.name,
                         description: p.description,
                         category: p.category,
-                        priceMin: p.priceMin,
-                        priceMax: p.priceMax,
+                        price: p.priceMin,
+                        originalPrice: p.priceMax,
                         currency: 'NGN',
                         materials: p.materials,
                         estimatedDeliveryDays: p.estimatedDeliveryDays,
                         images: p.images,
                         tags: p.tags.join(','),
-                        status: 'ACTIVE',
+                        status: 'approved',
                         providerId: user.id,
                     })),
                 },

@@ -28,6 +28,8 @@ class UpdateArtisanProfileDto {
     coverImageUrl;
     images;
     customOrdersEnabled;
+    rushOrderEnabled;
+    rushOrderSurchargePercent;
     verified;
     featured;
     estimatedDeliveryDays;
@@ -120,6 +122,16 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], UpdateArtisanProfileDto.prototype, "customOrdersEnabled", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateArtisanProfileDto.prototype, "rushOrderEnabled", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], UpdateArtisanProfileDto.prototype, "rushOrderSurchargePercent", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),

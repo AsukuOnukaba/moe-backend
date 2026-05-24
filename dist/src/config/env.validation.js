@@ -21,18 +21,11 @@ class EnvVars {
     JWT_REFRESH_SECRET;
     JWT_ACCESS_EXPIRES_IN;
     JWT_REFRESH_EXPIRES_IN;
-    CLOUDINARY_CLOUD_NAME;
-    CLOUDINARY_API_KEY;
-    CLOUDINARY_API_SECRET;
+    BASE_URL;
     GOOGLE_CLIENT_ID;
     GOOGLE_CLIENT_SECRET;
     GOOGLE_CALLBACK_URL;
     GOOGLE_SUCCESS_REDIRECT;
-    SMTP_HOST;
-    SMTP_PORT;
-    SMTP_USER;
-    SMTP_PASS;
-    SMTP_FROM;
 }
 __decorate([
     (0, class_validator_1.IsOptional)(),
@@ -80,17 +73,7 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], EnvVars.prototype, "CLOUDINARY_CLOUD_NAME", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], EnvVars.prototype, "CLOUDINARY_API_KEY", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], EnvVars.prototype, "CLOUDINARY_API_SECRET", void 0);
+], EnvVars.prototype, "BASE_URL", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
@@ -111,31 +94,6 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], EnvVars.prototype, "GOOGLE_SUCCESS_REDIRECT", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], EnvVars.prototype, "SMTP_HOST", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], EnvVars.prototype, "SMTP_PORT", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], EnvVars.prototype, "SMTP_USER", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], EnvVars.prototype, "SMTP_PASS", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], EnvVars.prototype, "SMTP_FROM", void 0);
 function validateEnv(config) {
     const validated = (0, class_transformer_1.plainToInstance)(EnvVars, config, {
         enableImplicitConversion: true,

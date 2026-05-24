@@ -155,8 +155,6 @@ async function main() {
         name: admin.name,
         email: admin.email.toLowerCase(),
         passwordHash: adminPassword,
-        emailVerified: true,
-        requiresEmailVerification: false,
       },
     });
 

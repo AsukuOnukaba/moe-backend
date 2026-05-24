@@ -43,7 +43,7 @@ export function productToDto(p: {
     estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
     materials: p.materials ?? '',
     tags: toTagArray(p.tags ?? null),
-    images: Array.isArray(p.images) ? p.images : p.imageUrl ? [p.imageUrl] : [],
+    images: Array.isArray(p.images) ? p.images : (p.imageUrl ? [p.imageUrl] : []),
     category: p.category ?? null,
     providerId: p.providerId ?? null,
     featured: p.featured ?? false,

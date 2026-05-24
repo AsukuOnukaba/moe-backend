@@ -31,8 +31,6 @@ const search_module_1 = require("./search/search.module");
 const support_module_1 = require("./support/support.module");
 const customization_module_1 = require("./customization/customization.module");
 const admin_module_1 = require("./admin/admin.module");
-const email_module_1 = require("./common/email/email.module");
-const storage_module_1 = require("./common/storage/storage.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -44,8 +42,6 @@ exports.AppModule = AppModule = __decorate([
                 validate: env_validation_1.validateEnv,
                 expandVariables: true,
             }),
-            email_module_1.EmailModule,
-            storage_module_1.StorageModule,
             database_module_1.DatabaseModule,
             auth_module_1.AuthModule,
             users_module_1.UsersModule,

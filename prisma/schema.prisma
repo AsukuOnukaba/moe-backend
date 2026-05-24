@@ -15,12 +15,6 @@ model User {
   phone                     String?
   avatarUrl                 String?
   googleId                  String?   @unique
-  emailVerified             Boolean?
-  requiresEmailVerification Boolean   @default(false)
-  emailOtp                  String?
-  emailOtpExpiresAt         DateTime?
-  adminOtp                  String?
-  adminOtpExpiresAt         DateTime?
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 

@@ -11,28 +11,20 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ArtisansController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
-const path_1 = __importDefault(require("path"));
-const crypto_1 = require("crypto");
-const multer_1 = __importDefault(require("multer"));
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
-const cloudinary_service_1 = require("../common/storage/cloudinary.service");
 const artisans_service_1 = require("./artisans.service");
 const update_artisan_profile_dto_1 = require("./dto/update-artisan-profile.dto");
 const create_artisan_product_dto_1 = require("./dto/create-artisan-product.dto");
 const update_artisan_product_dto_1 = require("./dto/update-artisan-product.dto");
+const multer_config_1 = require("../upload/multer.config");
 let ArtisansController = class ArtisansController {
     artisans;
-    cloudinary;
-    constructor(artisans, cloudinary) {
+    constructor(artisans) {
         this.artisans = artisans;
-        this.cloudinary = cloudinary;
     }
     filterMeta() {
         return this.artisans.getFilterMeta();
@@ -63,32 +55,26 @@ let ArtisansController = class ArtisansController {
         const user = req.user;
         return this.artisans.createProduct(user, dto);
     }
-    async uploadProductImage(req, file) {
+    async uploadProductImage(file, req) {
         if (!file) {
-            throw new common_1.BadRequestException('Missing file');
+            throw new common_1.BadRequestException('No file uploaded');
         }
-        const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
-        const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
-        const imageUrl = await this.cloudinary.uploadBuffer(file.buffer, 'products', filename);
-        return { url: imageUrl };
+        const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+        return { url: `${baseUrl}/uploads/products/${file.filename}` };
     }
-    async uploadProfileImage(req, file) {
+    async uploadStoreImage(file, req) {
         if (!file) {
-            throw new common_1.BadRequestException({ message: 'No file provided' });
+            throw new common_1.BadRequestException('No file uploaded');
         }
-        const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
-        const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
-        const url = await this.cloudinary.uploadBuffer(file.buffer, 'artisans', filename);
-        return { url };
+        const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+        return { url: `${baseUrl}/uploads/store/${file.filename}` };
     }
-    async uploadCoverImage(req, file) {
+    async uploadCoverImage(file, req) {
         if (!file) {
-            throw new common_1.BadRequestException({ message: 'No file provided' });
+            throw new common_1.BadRequestException('No file uploaded');
         }
-        const ext = path_1.default.extname(file.originalname || '').toLowerCase() || '.png';
-        const filename = `${(0, crypto_1.randomUUID)()}${ext}`;
-        const url = await this.cloudinary.uploadBuffer(file.buffer, 'artisans/covers', filename);
-        return { url };
+        const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+        return { url: `${baseUrl}/uploads/covers/${file.filename}` };
     }
     async patchProduct(req, id, dto) {
         const user = req.user;
@@ -161,12 +147,9 @@ __decorate([
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Post)('me/products/upload-image'),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
-        storage: multer_1.default.memoryStorage(),
-        limits: { fileSize: 10 * 1024 * 1024 },
-    })),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.UploadedFile)()),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', (0, multer_config_1.createMulterOptions)('products'))),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
@@ -174,45 +157,19 @@ __decorate([
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Post)('me/upload-image'),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
-        storage: multer_1.default.memoryStorage(),
-        limits: { fileSize: 5 * 1024 * 1024 },
-        fileFilter: (req, file, callback) => {
-            const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-            if (!allowedMimes.includes(file.mimetype)) {
-                callback(new common_1.BadRequestException({
-                    message: 'Unsupported file type. Upload a JPEG, PNG, or WebP image.',
-                }), false);
-                return;
-            }
-            callback(null, true);
-        },
-    })),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.UploadedFile)()),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', (0, multer_config_1.createMulterOptions)('store'))),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
-], ArtisansController.prototype, "uploadProfileImage", null);
+], ArtisansController.prototype, "uploadStoreImage", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Post)('me/upload-cover'),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
-        storage: multer_1.default.memoryStorage(),
-        limits: { fileSize: 5 * 1024 * 1024 },
-        fileFilter: (req, file, callback) => {
-            const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-            if (!allowedMimes.includes(file.mimetype)) {
-                callback(new common_1.BadRequestException({
-                    message: 'Unsupported file type. Upload a JPEG, PNG, or WebP image.',
-                }), false);
-                return;
-            }
-            callback(null, true);
-        },
-    })),
-    __param(0, (0, common_1.Req)()),
-    __param(1, (0, common_1.UploadedFile)()),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', (0, multer_config_1.createMulterOptions)('covers'))),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
@@ -238,7 +195,6 @@ __decorate([
 ], ArtisansController.prototype, "deleteProduct", null);
 exports.ArtisansController = ArtisansController = __decorate([
     (0, common_1.Controller)('artisans'),
-    __metadata("design:paramtypes", [artisans_service_1.ArtisansService,
-        cloudinary_service_1.CloudinaryService])
+    __metadata("design:paramtypes", [artisans_service_1.ArtisansService])
 ], ArtisansController);
 //# sourceMappingURL=artisans.controller.js.map

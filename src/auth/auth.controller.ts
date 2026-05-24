@@ -14,9 +14,6 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
-import path from 'path';
-import { randomUUID } from 'crypto';
-import multer from 'multer';
 import { AuthService } from './auth.service';
 import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRegisterDto } from './dto/auth-register.dto';
@@ -24,19 +21,15 @@ import { AuthRefreshDto } from './dto/auth-refresh.dto';
 import { AuthProfilePatchDto } from './dto/auth-profile-patch.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
-import { ResendOtpDto } from './dto/resend-otp.dto';
-import { AdminVerifyOtpDto } from './dto/admin-verify-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AccessTokenPayload } from './types/jwt-payload';
-import { CloudinaryService } from '../common/storage/cloudinary.service';
 import { ConfigService } from '@nestjs/config';
+import { createMulterOptions } from '../upload/multer.config';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
-    private readonly cloudinary: CloudinaryService,
     private readonly config: ConfigService,
   ) {}
 
@@ -48,21 +41,6 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: AuthLoginDto) {
     return this.auth.login(dto);
-  }
-
-  @Post('verify-email')
-  verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.auth.verifyEmail(dto.email, dto.otp);
-  }
-
-  @Post('resend-otp')
-  resendOtp(@Body() dto: ResendOtpDto) {
-    return this.auth.resendOtp(dto.email);
-  }
-
-  @Post('admin/verify-otp')
-  verifyAdminOtp(@Body() dto: AdminVerifyOtpDto) {
-    return this.auth.verifyAdminOtp(dto.email, dto.otp);
   }
 
   @Get('google')
@@ -105,23 +83,16 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('profile/avatar')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: multer.memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', createMulterOptions('avatars')))
   async uploadAvatar(
-    @Req() req: Request,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
   ) {
     if (!file) {
-      throw new BadRequestException('Missing file');
+      throw new BadRequestException('No file uploaded');
     }
-
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
-    const filename = `${randomUUID()}${ext}`;
-    const url = await this.cloudinary.uploadBuffer(file.buffer, 'avatars', filename);
+    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+    const url = `${baseUrl}/uploads/avatars/${file.filename}`;
     await this.auth.setAvatar((req.user as AccessTokenPayload).sub, url);
     return { url };
   }

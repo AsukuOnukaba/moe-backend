@@ -1,14 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { EmailService } from '../common/email/email.service';
 import { productToDto } from '../common/product-mapper';
 
 @Injectable()
 export class AdminService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly email: EmailService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async dashboard() {
     const [
@@ -88,17 +84,10 @@ export class AdminService {
       throw new BadRequestException({ message: 'Invalid status' });
     }
 
-    const profile = await this.prisma.artisanProfile.update({
+    await this.prisma.artisanProfile.update({
       where: { userId: id },
       data: { status, rejectionReason: reason ?? null },
-      include: { user: true },
     });
-
-    await this.email.sendMail(
-      profile.user.email,
-      `Artisan account ${status}`,
-      `Your artisan account has been ${status}.${reason ? ` Reason: ${reason}` : ''}`,
-    );
 
     return { id, status, rejectionReason: reason ?? null };
   }
@@ -149,19 +138,10 @@ export class AdminService {
       throw new BadRequestException({ message: 'Invalid status' });
     }
 
-    const product = await this.prisma.product.update({
+    await this.prisma.product.update({
       where: { id },
       data: { status, rejectionReason: reason ?? null },
-      include: { provider: true },
     });
-
-    if (product.provider?.email) {
-      await this.email.sendMail(
-        product.provider.email,
-        `Product ${status}`,
-        `Your product "${product.name}" has been ${status}.${reason ? ` Reason: ${reason}` : ''}`,
-      );
-    }
 
     return { id, status, rejectionReason: reason ?? null };
   }

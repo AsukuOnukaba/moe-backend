@@ -47,15 +47,7 @@ class EnvVars {
 
   @IsOptional()
   @IsString()
-  CLOUDINARY_CLOUD_NAME?: string;
-
-  @IsOptional()
-  @IsString()
-  CLOUDINARY_API_KEY?: string;
-
-  @IsOptional()
-  @IsString()
-  CLOUDINARY_API_SECRET?: string;
+  BASE_URL?: string;
 
   @IsOptional()
   @IsString()
@@ -73,25 +65,6 @@ class EnvVars {
   @IsString()
   GOOGLE_SUCCESS_REDIRECT?: string;
 
-  @IsOptional()
-  @IsString()
-  SMTP_HOST?: string;
-
-  @IsOptional()
-  @IsString()
-  SMTP_PORT?: string;
-
-  @IsOptional()
-  @IsString()
-  SMTP_USER?: string;
-
-  @IsOptional()
-  @IsString()
-  SMTP_PASS?: string;
-
-  @IsOptional()
-  @IsString()
-  SMTP_FROM?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

@@ -80,17 +80,18 @@ Backend changes for the MoE feature sprint. Each section documents what the back
 
 ---
 
-## 4 — All Image Uploads Must Save to Cloud Storage
+## 4 — Image Uploads (Local Filesystem on VPS)
 
 ### What the backend now does
-- All upload handlers upload to **Cloudinary** and return `{ "url": "https://res.cloudinary.com/..." }`.
-- Local `/uploads` static serving removed from `main.ts` and `app.module.ts`.
-- Required env vars: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
+- All upload handlers save to `uploads/{subfolder}/` on disk and return `{ "url": "{BASE_URL}/uploads/{subfolder}/{uuid}.{ext}" }`.
+- Files are served at `GET /uploads/...` via Express static middleware in `main.ts`.
+- Set `BASE_URL` in production (e.g. `https://api.yourdomain.com`) so returned URLs are absolute and correct behind a reverse proxy.
+- Max file size: 2MB. Allowed types: JPEG, PNG, WebP.
 
 ### What the frontend must do
-- Use `response.url` (not `imageUrl` or local `/uploads/...` paths) when saving image references.
-- Configure Cloudinary credentials in deployment environment.
-- `POST /artisans/me/products/upload-image` now returns `{ url }` (was `{ imageUrl }`).
+- Use `response.url` when saving image references (product `images[]`, avatar, store image, cover).
+- URLs may be same-origin (`http://localhost:3000/uploads/...`) or your API host in production — use the returned URL as-is.
+- `POST /artisans/me/products/upload-image` returns `{ url }`.
 
 ### Endpoints affected
 - `POST /artisans/me/products/upload-image`
@@ -179,28 +180,24 @@ Backend changes for the MoE feature sprint. Each section documents what the back
 
 ---
 
-## 9 — Artisan Signup: Service Categories, Google OAuth, Email OTP
+## 9 — Artisan Signup: Service Categories and Google OAuth
 
 ### What the backend now does
 - `POST /auth/register` for artisans accepts `serviceCategories: string[]` (stored comma-separated on profile).
-- New email/password signups: `emailVerified: false`, 6-digit OTP emailed, 15-minute expiry. Register response does **not** return tokens.
-- `POST /auth/verify-email` body `{ email, otp }` — on success returns tokens + user profile.
-- `POST /auth/resend-otp` body `{ email }`.
-- Login returns `403 EMAIL_NOT_VERIFIED` for unverified new accounts. Existing accounts (`requiresEmailVerification: false`) are unaffected.
-- Google OAuth: `GET /auth/google` → `GET /auth/google/callback` redirects to `GOOGLE_SUCCESS_REDIRECT` with `token` and `refreshToken` query params. Google users get `emailVerified: true`.
+- Register returns `token`, `refreshToken`, and `user` immediately (same shape as login). No email verification step.
+- `POST /auth/login` returns tokens for all accounts with valid credentials. No verification gate.
+- Google OAuth: `GET /auth/google` → `GET /auth/google/callback` redirects to `GOOGLE_SUCCESS_REDIRECT` with `token` and `refreshToken` query params.
 
 ### What the frontend must do
 - Artisan signup form: multi-select `serviceCategories` array in register payload.
-- After register, show OTP entry screen; call `POST /auth/verify-email`.
-- Add “Resend code” calling `POST /auth/resend-otp`.
-- Handle login `403` code `EMAIL_NOT_VERIFIED` with redirect to verification screen.
+- After register, store tokens from the response and navigate to the app (remove OTP verification screens).
+- Remove calls to `POST /auth/verify-email` and `POST /auth/resend-otp` (endpoints removed).
+- Remove handling for `EMAIL_NOT_VERIFIED` and `requiresOtp` on login.
 - Add “Continue with Google” button linking to `GET /auth/google` (full-page redirect).
 - On Google callback page, read `token` and `refreshToken` from URL and store session.
 
 ### Endpoints affected
 - `POST /auth/register`
-- `POST /auth/verify-email`
-- `POST /auth/resend-otp`
 - `POST /auth/login`
 - `GET /auth/google`
 - `GET /auth/google/callback`
@@ -228,29 +225,25 @@ Backend changes for the MoE feature sprint. Each section documents what the back
 
 ---
 
-## 11 — Admin Portal with Approval Workflow and 2FA
+## 11 — Admin Portal with Approval Workflow
 
 ### What the backend now does
 - Seeded admin accounts (password `password123`): `asukuonukaba@gmail.com`, `tayuzeee@gmail.com`, `Smartlynks97@gmail.com`.
-- Admin login: `POST /auth/login` returns `{ requiresOtp: true, email }` (no tokens until OTP).
-- `POST /auth/admin/verify-otp` body `{ email, otp }` returns tokens.
+- Admin login: `POST /auth/login` returns `token`, `refreshToken`, and `user` (same as other roles). No OTP step.
 - All `/admin/*` routes require JWT + `admin` role; non-admins get `403`.
 - Admin endpoints:
   - `GET /admin/dashboard`
   - `GET /admin/artisans`, `GET /admin/artisans/:id`, `PATCH /admin/artisans/:id/status` body `{ status, reason? }`
   - `GET /admin/products`, `GET /admin/products/:id`, `PATCH /admin/products/:id/status` body `{ status, reason? }`
   - `GET /admin/users`, `GET /admin/users/:id`
-- Approval/rejection sends email notification to artisan.
-
 ### What the frontend must do
-- Build admin login: after password login, if `requiresOtp`, show OTP form and call `POST /auth/admin/verify-otp`.
+- Build admin login using the same flow as customer/artisan login (email + password → tokens).
 - Build admin dashboard and paginated tables for artisans, products, users.
 - Approval UI: PATCH status to `approved` or `rejected` with optional `reason` textarea.
 - Guard all admin routes client-side by `user.role === 'admin'`.
 
 ### Endpoints affected
 - `POST /auth/login`
-- `POST /auth/admin/verify-otp`
 - `GET /admin/dashboard`
 - `GET /admin/artisans`, `GET /admin/artisans/:id`, `PATCH /admin/artisans/:id/status`
 - `GET /admin/products`, `GET /admin/products/:id`, `PATCH /admin/products/:id/status`

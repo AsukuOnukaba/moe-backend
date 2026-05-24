@@ -15,23 +15,17 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
-import path from 'path';
-import { randomUUID } from 'crypto';
-import multer from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CloudinaryService } from '../common/storage/cloudinary.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { ArtisansService } from './artisans.service';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
+import { createMulterOptions } from '../upload/multer.config';
 
 @Controller('artisans')
 export class ArtisansController {
-  constructor(
-    private readonly artisans: ArtisansService,
-    private readonly cloudinary: CloudinaryService,
-  ) {}
+  constructor(private readonly artisans: ArtisansService) {}
 
   @Get('filter-meta')
   filterMeta() {
@@ -90,106 +84,44 @@ export class ArtisansController {
 
   @UseGuards(JwtAuthGuard)
   @Post('me/products/upload-image')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: multer.memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', createMulterOptions('products')))
   async uploadProductImage(
-    @Req() req: Request,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
   ) {
     if (!file) {
-      throw new BadRequestException('Missing file');
+      throw new BadRequestException('No file uploaded');
     }
-
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
-    const filename = `${randomUUID()}${ext}`;
-    const imageUrl = await this.cloudinary.uploadBuffer(
-      file.buffer,
-      'products',
-      filename,
-    );
-    return { url: imageUrl };
+    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+    return { url: `${baseUrl}/uploads/products/${file.filename}` };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('me/upload-image')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: multer.memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-      fileFilter: (req, file, callback) => {
-        const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedMimes.includes(file.mimetype)) {
-          callback(
-            new BadRequestException({
-              message: 'Unsupported file type. Upload a JPEG, PNG, or WebP image.',
-            }),
-            false,
-          );
-          return;
-        }
-        callback(null, true);
-      },
-    }),
-  )
-  async uploadProfileImage(
-    @Req() req: Request,
+  @UseInterceptors(FileInterceptor('file', createMulterOptions('store')))
+  async uploadStoreImage(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
   ) {
     if (!file) {
-      throw new BadRequestException({ message: 'No file provided' });
+      throw new BadRequestException('No file uploaded');
     }
-
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
-    const filename = `${randomUUID()}${ext}`;
-    const url = await this.cloudinary.uploadBuffer(
-      file.buffer,
-      'artisans',
-      filename,
-    );
-    return { url };
+    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+    return { url: `${baseUrl}/uploads/store/${file.filename}` };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('me/upload-cover')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: multer.memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-      fileFilter: (req, file, callback) => {
-        const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedMimes.includes(file.mimetype)) {
-          callback(
-            new BadRequestException({
-              message: 'Unsupported file type. Upload a JPEG, PNG, or WebP image.',
-            }),
-            false,
-          );
-          return;
-        }
-        callback(null, true);
-      },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', createMulterOptions('covers')))
   async uploadCoverImage(
-    @Req() req: Request,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
   ) {
     if (!file) {
-      throw new BadRequestException({ message: 'No file provided' });
+      throw new BadRequestException('No file uploaded');
     }
-
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
-    const filename = `${randomUUID()}${ext}`;
-    const url = await this.cloudinary.uploadBuffer(
-      file.buffer,
-      'artisans/covers',
-      filename,
-    );
-    return { url };
+    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
+    return { url: `${baseUrl}/uploads/covers/${file.filename}` };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -210,4 +142,3 @@ export class ArtisansController {
     return this.artisans.deleteProduct(user!, Number(id));
   }
 }
-

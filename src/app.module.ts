@@ -22,8 +22,6 @@ import { SearchModule } from './search/search.module';
 import { SupportModule } from './support/support.module';
 import { CustomizationModule } from './customization/customization.module';
 import { AdminModule } from './admin/admin.module';
-import { EmailModule } from './common/email/email.module';
-import { StorageModule } from './common/storage/storage.module';
 
 @Module({
   imports: [
@@ -32,8 +30,6 @@ import { StorageModule } from './common/storage/storage.module';
       validate: validateEnv,
       expandVariables: true,
     }),
-    EmailModule,
-    StorageModule,
     DatabaseModule,
     AuthModule,
     UsersModule,

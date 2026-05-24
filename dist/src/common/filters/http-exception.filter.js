@@ -28,10 +28,10 @@ let MoeHttpExceptionFilter = class MoeHttpExceptionFilter {
             const multerError = exception;
             if (multerError.code === 'LIMIT_FILE_SIZE') {
                 const body = {
-                    message: 'File too large. Maximum size is 5MB.',
+                    message: 'Image must be 2MB or smaller',
                     code: 'VALIDATION_ERROR',
                 };
-                return res.status(413).json(body);
+                return res.status(400).json(body);
             }
         }
         const isHttp = exception instanceof common_1.HttpException;

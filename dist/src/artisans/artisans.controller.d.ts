@@ -1,13 +1,11 @@
 import type { Request } from 'express';
-import { CloudinaryService } from '../common/storage/cloudinary.service';
 import { ArtisansService } from './artisans.service';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 export declare class ArtisansController {
     private readonly artisans;
-    private readonly cloudinary;
-    constructor(artisans: ArtisansService, cloudinary: CloudinaryService);
+    constructor(artisans: ArtisansService);
     filterMeta(): Promise<{
         categories: string[];
         serviceCategories: string[];
@@ -153,13 +151,13 @@ export declare class ArtisansController {
         status: string | null;
         customisationRequired: boolean;
     }>;
-    uploadProductImage(req: Request, file: Express.Multer.File): Promise<{
+    uploadProductImage(file: Express.Multer.File, req: Request): Promise<{
         url: string;
     }>;
-    uploadProfileImage(req: Request, file: Express.Multer.File): Promise<{
+    uploadStoreImage(file: Express.Multer.File, req: Request): Promise<{
         url: string;
     }>;
-    uploadCoverImage(req: Request, file: Express.Multer.File): Promise<{
+    uploadCoverImage(file: Express.Multer.File, req: Request): Promise<{
         url: string;
     }>;
     patchProduct(req: Request, id: string, dto: UpdateArtisanProductDto): Promise<{

@@ -1,10 +1,8 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { EmailService } from '../common/email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -24,7 +22,6 @@ function nowPlusMs(ms: number) {
 }
 
 function parseExpiresInToMs(expiresIn: string): number {
-  // Supports "20m", "15m", "30d", "7d", "3600s"
   const m = /^(\d+)\s*([smhd])$/.exec(expiresIn.trim());
   if (!m) throw new Error(`Invalid expires format: ${expiresIn}`);
   const n = Number(m[1]);
@@ -46,28 +43,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-    private readonly email: EmailService,
   ) {}
-
-  private generateOtp(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
-  }
-
-  private isEmailVerified(user: {
-    emailVerified: boolean | null;
-    requiresEmailVerification: boolean;
-  }): boolean {
-    if (!user.requiresEmailVerification) return true;
-    return user.emailVerified === true;
-  }
-
-  private async sendEmailOtp(user: { email: string; name: string }, otp: string) {
-    await this.email.sendMail(
-      user.email,
-      'Verify your MoE email',
-      `Hi ${user.name},\n\nYour verification code is: ${otp}\n\nThis code expires in 15 minutes.`,
-    );
-  }
 
   private accessExpiresIn(): string {
     return this.config.get<string>('JWT_ACCESS_EXPIRES_IN', '20m');
@@ -172,8 +148,6 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(input.password, 12);
-    const otp = this.generateOtp();
-    const otpExpires = new Date(Date.now() + 15 * 60 * 1000);
 
     const user = await this.prisma.user.create({
       data: {
@@ -181,14 +155,8 @@ export class AuthService {
         email: input.email.toLowerCase(),
         passwordHash,
         phone: input.phone ?? null,
-        emailVerified: false,
-        requiresEmailVerification: true,
-        emailOtp: otp,
-        emailOtpExpiresAt: otpExpires,
       },
     });
-
-    await this.sendEmailOtp(user, otp);
 
     await this.ensureUserRole(user.id, role);
     if (role === 'artisan') {
@@ -207,10 +175,10 @@ export class AuthService {
       });
     }
 
+    const tokens = await this.issueTokens(user, role);
     return {
-      message: 'Registration successful. Please verify your email.',
-      email: user.email,
-      requiresEmailVerification: true,
+      ...tokens,
+      user: await this.toProfile(user, role),
     };
   }
 
@@ -227,101 +195,11 @@ export class AuthService {
     }
 
     const role = await this.resolvePrimaryRole(user.id);
-
-    if (!this.isEmailVerified(user)) {
-      throw new ForbiddenException({
-        message: 'Email not verified',
-        code: 'EMAIL_NOT_VERIFIED',
-      });
-    }
-
-    if (role === 'admin') {
-      const otp = this.generateOtp();
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          adminOtp: otp,
-          adminOtpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
-        },
-      });
-      await this.email.sendMail(
-        user.email,
-        'Admin login verification',
-        `Your admin login code is: ${otp}\n\nThis code expires in 10 minutes.`,
-      );
-      return { requiresOtp: true, email: user.email };
-    }
-
     const tokens = await this.issueTokens(user, role);
     return {
       ...tokens,
       user: await this.toProfile(user, role),
     };
-  }
-
-  async verifyEmail(email: string, otp: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-    if (!user || !user.emailOtp || user.emailOtp !== otp) {
-      throw authError('Invalid OTP', 'AUTH_INVALID_CREDENTIALS');
-    }
-    if (!user.emailOtpExpiresAt || user.emailOtpExpiresAt.getTime() < Date.now()) {
-      throw authError('OTP expired', 'AUTH_INVALID_CREDENTIALS');
-    }
-
-    const updated = await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailVerified: true,
-        emailOtp: null,
-        emailOtpExpiresAt: null,
-      },
-    });
-
-    const role = await this.resolvePrimaryRole(updated.id);
-    const tokens = await this.issueTokens(updated, role);
-    return { ...tokens, user: await this.toProfile(updated, role) };
-  }
-
-  async resendOtp(email: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-    if (!user || !user.requiresEmailVerification || user.emailVerified) {
-      return { message: 'If the account exists, a new OTP has been sent.' };
-    }
-
-    const otp = this.generateOtp();
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailOtp: otp,
-        emailOtpExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
-      },
-    });
-    await this.sendEmailOtp(user, otp);
-    return { message: 'If the account exists, a new OTP has been sent.' };
-  }
-
-  async verifyAdminOtp(email: string, otp: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-    if (!user || user.adminOtp !== otp) {
-      throw authError('Invalid OTP', 'AUTH_INVALID_CREDENTIALS');
-    }
-    if (!user.adminOtpExpiresAt || user.adminOtpExpiresAt.getTime() < Date.now()) {
-      throw authError('OTP expired', 'AUTH_INVALID_CREDENTIALS');
-    }
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { adminOtp: null, adminOtpExpiresAt: null },
-    });
-
-    const tokens = await this.issueTokens(user, 'admin');
-    return { ...tokens, user: await this.toProfile(user, 'admin') };
   }
 
   async handleGoogleLogin(profile: {
@@ -345,8 +223,6 @@ export class AuthService {
           passwordHash,
           googleId: profile.googleId,
           avatarUrl: profile.avatarUrl,
-          emailVerified: true,
-          requiresEmailVerification: false,
         },
       });
       await this.ensureUserRole(user.id, 'customer');
@@ -355,7 +231,6 @@ export class AuthService {
         where: { id: user.id },
         data: {
           googleId: profile.googleId,
-          emailVerified: true,
           avatarUrl: user.avatarUrl ?? profile.avatarUrl,
         },
       });
@@ -383,7 +258,6 @@ export class AuthService {
       throw authError('Refresh token invalid or expired', 'AUTH_REFRESH_FAILED');
     }
 
-    // Rotate: revoke old token record and issue a new refresh token
     await this.prisma.refreshToken.update({
       where: { jti: payload.jti },
       data: { revokedAt: new Date() },
@@ -577,7 +451,6 @@ export class AuthService {
       data,
     });
 
-    // Strip passwordHash from response
     const { passwordHash: _, ...result } = user as any;
     return result;
   }
@@ -606,4 +479,3 @@ export class AuthService {
     return { message: 'Password updated successfully' };
   }
 }
-

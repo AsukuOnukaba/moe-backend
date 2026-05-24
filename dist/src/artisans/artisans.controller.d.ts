@@ -9,6 +9,10 @@ export declare class ArtisansController {
     filterMeta(): Promise<{
         categories: string[];
         serviceCategories: string[];
+        availableServiceCategories: {
+            id: string;
+            name: string;
+        }[];
         locations: string[];
     }>;
     rushOrderConfig(id: string): Promise<{

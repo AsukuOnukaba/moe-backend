@@ -11,6 +11,7 @@ import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 import { productToDto } from '../common/product-mapper';
+import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service-categories';
 
 function asArrayFromComma(value: string | null | undefined): string[] {
   if (!value) return [];
@@ -353,7 +354,11 @@ export class ArtisansService {
         .map((c) => c.category)
         .filter((c): c is string => Boolean(c))
         .sort(),
-      serviceCategories: [...serviceCategories].sort(),
+      serviceCategories: mergeServiceCategoryNames([...serviceCategories]),
+      availableServiceCategories: SERVICE_CATEGORIES.map((c) => ({
+        id: c.id,
+        name: c.name,
+      })),
       locations: [...locations].sort(),
     };
   }

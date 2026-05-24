@@ -152,6 +152,10 @@ export declare class ArtisansService {
     getFilterMeta(): Promise<{
         categories: string[];
         serviceCategories: string[];
+        availableServiceCategories: {
+            id: string;
+            name: string;
+        }[];
         locations: string[];
     }>;
     getRushOrderConfig(artisanId: number): Promise<{

@@ -49,5 +49,98 @@ export declare class OrdersService {
         code: string;
     }>;
     patch(user: AccessTokenPayload, orderId: string, body: Record<string, unknown>): Promise<Order | null>;
+    private formatOrderNumber;
+    private loadCustomerMap;
+    private toAdminListItem;
+    adminList(query: Record<string, unknown>): Promise<{
+        data: {
+            id: number;
+            orderNumber: string;
+            status: string;
+            productName: string | null;
+            productImage: string | null;
+            providerId: number | null;
+            providerName: string | null;
+            customerId: number;
+            customerName: string | null;
+            customerEmail: string | null;
+            price: number | null;
+            currency: string;
+            paymentStatus: string;
+            paymentMethod: string;
+            isCustomOrder: boolean;
+            createdAt: string;
+        }[];
+        pagination: {
+            page: number;
+            pageSize: number;
+            totalPages: number;
+            totalItems: number;
+        };
+    }>;
+    adminGetById(orderId: number): Promise<{
+        customer: {
+            id: number;
+            name: string;
+            email: string;
+            phone: string | null;
+        } | null;
+        id: number;
+        customerId: number;
+        productId: number;
+        productName: string | null;
+        productImage: string | null;
+        providerId: number | null;
+        providerName: string | null;
+        customizationId: number | null;
+        isCustomOrder: boolean;
+        status: string;
+        price: number | null;
+        basePrice: number | null;
+        rushSurcharge: number | null;
+        rushOrder: boolean;
+        customisationData: Record<string, unknown> | null;
+        currency: string;
+        shippingAddress: ShippingAddress;
+        paymentMethod: string;
+        paymentReference: string | null;
+        paymentStatus: string;
+        createdAt: string;
+        updatedAt: string;
+        orderNumber: string;
+    }>;
+    private static readonly ADMIN_ORDER_STATUSES;
+    private static readonly ADMIN_PAYMENT_STATUSES;
+    adminPatch(orderId: number, body: Record<string, unknown>): Promise<{
+        customer: {
+            id: number;
+            name: string;
+            email: string;
+            phone: string | null;
+        } | null;
+        id: number;
+        customerId: number;
+        productId: number;
+        productName: string | null;
+        productImage: string | null;
+        providerId: number | null;
+        providerName: string | null;
+        customizationId: number | null;
+        isCustomOrder: boolean;
+        status: string;
+        price: number | null;
+        basePrice: number | null;
+        rushSurcharge: number | null;
+        rushOrder: boolean;
+        customisationData: Record<string, unknown> | null;
+        currency: string;
+        shippingAddress: ShippingAddress;
+        paymentMethod: string;
+        paymentReference: string | null;
+        paymentStatus: string;
+        createdAt: string;
+        updatedAt: string;
+        orderNumber: string;
+    }>;
 }
 export {};

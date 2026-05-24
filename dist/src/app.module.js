@@ -31,6 +31,7 @@ const search_module_1 = require("./search/search.module");
 const support_module_1 = require("./support/support.module");
 const customization_module_1 = require("./customization/customization.module");
 const admin_module_1 = require("./admin/admin.module");
+const meta_module_1 = require("./meta/meta.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -60,6 +61,7 @@ exports.AppModule = AppModule = __decorate([
             support_module_1.SupportModule,
             customization_module_1.CustomizationModule,
             admin_module_1.AdminModule,
+            meta_module_1.MetaModule,
         ],
         controllers: [app_controller_1.AppController, health_controller_1.HealthController],
         providers: [app_service_1.AppService],

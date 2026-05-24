@@ -38,6 +38,11 @@ This document is the single source of truth for rebuilding the admin frontend. T
 | `PATCH /auth/change-password` | Primary route; `POST` kept as deprecated alias |
 | Change password errors | Wrong current password → `400` with `{ message: "Current password is incorrect" }` |
 | `FORBIDDEN` error code | Added to `ErrorCode` union |
+| `GET /meta/service-categories` | Canonical signup category list (public) |
+| `GET /admin/orders` | Paginated all orders for admin |
+| `GET /admin/orders/:id` | Order detail with customer info |
+| `PATCH /admin/orders/:id` | Update order/payment status |
+| `GET /artisans/filter-meta` | Now includes `availableServiceCategories` + merged `serviceCategories` |
 
 ### Migrations
 
@@ -435,6 +440,110 @@ Password hash is never returned.
 
 ---
 
+### `GET /admin/orders`
+
+Paginated list of all orders (not scoped to the logged-in customer).
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | number | Default `1` |
+| `pageSize` | number | Default `20`, max `100` |
+| `status` | string | Filter by order status |
+| `paymentStatus` | string | Filter by `unpaid`, `paid`, `refunded`, `failed` |
+| `q` | string | Search by order id (`ORD-001` or `1`), product name, provider name, customer name/email |
+
+**Response (`200`):**
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "orderNumber": "ORD-001",
+      "status": "pending",
+      "productName": "Custom Ankara Dress",
+      "productImage": "https://...",
+      "providerId": 5,
+      "providerName": "Adaobi Couture",
+      "customerId": 12,
+      "customerName": "Chioma Okafor",
+      "customerEmail": "chioma@example.com",
+      "price": 45000,
+      "currency": "NGN",
+      "paymentStatus": "unpaid",
+      "paymentMethod": "bank_transfer",
+      "isCustomOrder": false,
+      "createdAt": "2026-03-26T12:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 1,
+    "totalItems": 3
+  }
+}
+```
+
+---
+
+### `GET /admin/orders/:id`
+
+Full order payload (same shape as customer `GET /orders/:id`) plus `orderNumber` and `customer`:
+
+**Response (`200`):** `{ orderNumber, id, customerId, productId, ..., customer: { id, name, email, phone } }`
+
+---
+
+### `PATCH /admin/orders/:id`
+
+**Body (all fields optional):**
+
+```json
+{
+  "status": "in_progress",
+  "paymentStatus": "paid",
+  "paymentReference": "TXN-123",
+  "paymentMethod": "card"
+}
+```
+
+**Allowed `status` values:** `pending`, `confirmed`, `in_progress`, `approved`, `shipped`, `delivered`, `cancelled`, `rejected`
+
+**Allowed `paymentStatus` values:** `unpaid`, `paid`, `refunded`, `failed`
+
+**Response (`200`):** Same as `GET /admin/orders/:id`
+
+---
+
+## Public meta (artisan signup)
+
+### `GET /meta/service-categories`
+
+No authentication required.
+
+Returns the canonical list for artisan signup chips (not derived from the database).
+
+**Response (`200`):**
+
+```json
+{
+  "serviceCategories": [
+    { "id": "tailoring", "name": "Tailoring" },
+    { "id": "shoemaking", "name": "Shoemaking" },
+    { "id": "leatherwork", "name": "Leatherwork" }
+  ]
+}
+```
+
+**Frontend signup:** On artisan signup mount, call this endpoint and render one chip per `name`. On submit, send `serviceCategories: string[]` (use `name` values) in `POST /auth/register`.
+
+**Alternative:** `GET /artisans/filter-meta` also returns `availableServiceCategories` (same objects) and `serviceCategories` (merged names from DB + canonical list).
+
+---
+
 ## Status semantics
 
 | Entity | Values | Default (new) | Public visibility |
@@ -458,6 +567,8 @@ Artisan management (`GET /artisans/me/products`) returns **all** statuses for th
 | `/admin/products/:id` | Detail view + approve/reject/draft actions |
 | `/admin/users` | Paginated table, role filter |
 | `/admin/users/:id` | User detail (roles, linked profiles) |
+| `/admin/orders` | Paginated orders from `GET /admin/orders` |
+| `/admin/orders/:id` | Order detail + status actions |
 | `/admin/settings` or profile | Change password form |
 
 Optional: redirect `/admin` → `/admin/dashboard`.
@@ -483,6 +594,12 @@ adminApi.patchProductStatus(id: number, body: { status: 'approved' | 'rejected' 
 
 adminApi.listUsers(params: { page?: number; pageSize?: number; role?: string })
 adminApi.getUser(id: number)
+
+adminApi.listOrders(params: { page?: number; pageSize?: number; status?: string; paymentStatus?: string; q?: string })
+adminApi.getOrder(id: number)
+adminApi.patchOrder(id: number, body: { status?: string; paymentStatus?: string; paymentReference?: string; paymentMethod?: string })
+
+metaApi.getServiceCategories(): Promise<{ serviceCategories: { id: string; name: string }[] }>
 
 authApi.login(email: string, password: string)
 authApi.changePassword(currentPassword: string, newPassword: string)
@@ -611,6 +728,8 @@ All errors follow:
 - [ ] Build paginated artisans list + detail + approval UI
 - [ ] Build paginated products list + detail + approval UI (include `draft` action)
 - [ ] Build paginated users list + detail
+- [ ] Wire `/admin/orders` to `GET /admin/orders` (replace mock ORD-001 data)
+- [ ] Wire artisan signup chips to `GET /meta/service-categories`
 - [ ] Build change password form
 - [ ] Token storage + refresh interceptor
 - [ ] Toast/notification system for API errors and success messages
@@ -636,6 +755,8 @@ All errors follow:
 6. **Seed idempotency:** Admin accounts are only created if email does not exist; re-running seed does not reset passwords for existing admins.
 7. **CORS:** Backend reads `CORS_ORIGINS` — add your admin frontend origin before testing.
 8. **JWT access TTL:** Default 20 minutes (`JWT_ACCESS_EXPIRES_IN`); implement refresh for long admin sessions.
+9. **Admin orders list:** Returns empty `data` until customers place real orders via `POST /orders`.
+10. **Categories / Media admin:** Still not implemented on backend — keep hidden or “coming soon” until a follow-up.
 
 ---
 

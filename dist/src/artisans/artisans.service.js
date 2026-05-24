@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const prisma_service_1 = require("../database/prisma.service");
 const product_mapper_1 = require("../common/product-mapper");
+const service_categories_1 = require("../common/service-categories");
 function asArrayFromComma(value) {
     if (!value)
         return [];
@@ -325,7 +326,11 @@ let ArtisansService = class ArtisansService {
                 .map((c) => c.category)
                 .filter((c) => Boolean(c))
                 .sort(),
-            serviceCategories: [...serviceCategories].sort(),
+            serviceCategories: (0, service_categories_1.mergeServiceCategoryNames)([...serviceCategories]),
+            availableServiceCategories: service_categories_1.SERVICE_CATEGORIES.map((c) => ({
+                id: c.id,
+                name: c.name,
+            })),
             locations: [...locations].sort(),
         };
     }

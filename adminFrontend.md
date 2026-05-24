@@ -45,7 +45,13 @@ No new migration was required. Status fields were added in:
 
 - `prisma/migrations/20260516120000_sprint_features/migration.sql`
 
-Run seed for admin accounts (if not already seeded):
+Bootstrap admin accounts (required before first admin login):
+
+```bash
+npm run seed:admins
+```
+
+Full marketplace seed (optional):
 
 ```bash
 npx prisma db seed
@@ -630,6 +636,24 @@ All errors follow:
 6. **Seed idempotency:** Admin accounts are only created if email does not exist; re-running seed does not reset passwords for existing admins.
 7. **CORS:** Backend reads `CORS_ORIGINS` — add your admin frontend origin before testing.
 8. **JWT access TTL:** Default 20 minutes (`JWT_ACCESS_EXPIRES_IN`); implement refresh for long admin sessions.
+
+---
+
+## Troubleshooting admin login
+
+### `Invalid credentials` on `POST /auth/login`
+
+1. **Admin users missing** — Most common. The API returns the same error for unknown email and wrong password. Run:
+   ```bash
+   npm run seed:admins
+   ```
+   Ensure `DATABASE_URL` in `.env` matches the database your API uses.
+
+2. **Wrong password** — Admins use `password123` (lowercase). Artisan demo accounts use `Password123!` (different).
+
+3. **Database not running** — `Can't reach database server at localhost:5432` means Postgres is down; start it before seeding or starting the API.
+
+4. **User exists but is not admin** — Re-run `npm run seed:admins`; it assigns the `admin` role and resets the dev password for the three admin emails only.
 
 ---
 

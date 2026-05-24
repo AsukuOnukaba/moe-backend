@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { hash } from 'bcryptjs';
+import * as bcrypt from 'bcrypt';
 
 // ===============================================
 // TEST CREDENTIALS FOR LOCAL DEVELOPMENT
@@ -138,36 +138,52 @@ async function main() {
   });
 
   await prisma.role.upsert({
+    where: { name: 'customer' },
+    update: {},
+    create: { name: 'customer' },
+  });
+
+  await prisma.role.upsert({
     where: { name: 'admin' },
     update: {},
     create: { name: 'admin' },
   });
 
   const adminRole = await prisma.role.findUnique({ where: { name: 'admin' } });
-  const adminPassword = await hash('password123', 12);
+  if (!adminRole) throw new Error('admin role missing after upsert');
+
+  const adminPassword = await bcrypt.hash('password123', 12);
 
   for (const admin of ADMIN_ACCOUNTS) {
-    const existing = await prisma.user.findUnique({ where: { email: admin.email.toLowerCase() } });
-    if (existing) continue;
+    const email = admin.email.toLowerCase();
+    let user = await prisma.user.findUnique({ where: { email } });
 
-    const user = await prisma.user.create({
-      data: {
-        name: admin.name,
-        email: admin.email.toLowerCase(),
-        passwordHash: adminPassword,
-      },
-    });
-
-    if (adminRole) {
-      await prisma.userRole.create({
-        data: { userId: user.id, roleId: adminRole.id },
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: admin.name,
+          email,
+          passwordHash: adminPassword,
+        },
       });
+      console.log(`  ✅ Created admin: ${email}`);
+    } else {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: adminPassword },
+      });
+      console.log(`  ✅ Ensured admin password for existing user: ${email}`);
     }
-    console.log(`  ✅ Created admin: ${admin.email}`);
+
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: user.id, roleId: adminRole.id } },
+      update: {},
+      create: { userId: user.id, roleId: adminRole.id },
+    });
   }
 
   for (const artisan of ARTISANS) {
-    const hashedPassword = await hash('Password123!', 12);
+    const hashedPassword = await bcrypt.hash('Password123!', 12);
 
     const user = await prisma.user.create({
       data: {

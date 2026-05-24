@@ -106,14 +106,18 @@ Backend changes for the MoE feature sprint. Each section documents what the back
 ### What the backend now does
 - Wishlist is persisted per user in DB (`WishlistItem` table).
 - **Idempotent add**: `POST /wishlist/:productId` returns existing product DTO if already wishlisted (no error).
-- `GET /wishlist` returns full product objects via standard `productToDto` shape.
-- `DELETE /wishlist/:productId` removes item (204).
-- Legacy routes at `/customers/me/wishlist` remain for backward compatibility.
+- `GET /wishlist` returns wishlist items with `wishlistItemId`, `productId`, `providerName`, `artisanName`, plus standard product fields (`id` = product id, `name`, `priceRange`, etc.).
+- `DELETE /wishlist/:productId` removes by **product id** or **wishlist item id** (idempotent 204 — no error if already removed).
+- `DELETE /wishlist/items/:wishlistItemId` removes by wishlist row id explicitly.
+- Legacy routes at `/customers/me/wishlist` mirror the same behaviour.
 
 ### What the frontend must do
 - Switch wishlist API calls to JWT-protected `/wishlist` routes.
 - On login, call `GET /wishlist` to hydrate wishlist state (stop using localStorage-only wishlist).
-- Use `POST /wishlist/:productId` and `DELETE /wishlist/:productId` with numeric product IDs.
+- Use `POST /wishlist/:productId` and `DELETE /wishlist/:productId` with the product's `id` or `productId` from the list response.
+- If delete fails, try `DELETE /wishlist/items/:wishlistItemId` using `wishlistItemId` from `GET /wishlist`.
+- Display product title from `name` (not `title`). Display artisan from `providerName` or `artisanName`.
+- Do not redirect to homepage on delete errors — show a toast and keep the user on the wishlist page.
 
 ### Endpoints affected
 - `GET /wishlist`

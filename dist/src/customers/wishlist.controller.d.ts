@@ -27,6 +27,11 @@ export declare class WishlistController {
             originalPrice: number | null;
             status: string | null;
             customisationRequired: boolean;
+            wishlistItemId: number;
+            productId: number;
+            addedAt: string;
+            providerName: string | null;
+            artisanName: string | null;
         }[];
         total: number;
     }>;
@@ -53,6 +58,12 @@ export declare class WishlistController {
         originalPrice: number | null;
         status: string | null;
         customisationRequired: boolean;
+        wishlistItemId: number;
+        productId: number;
+        addedAt: string;
+        providerName: string | null;
+        artisanName: string | null;
     }>;
+    removeByItemId(req: Request, wishlistItemId: string): Promise<void>;
     remove(req: Request, productId: string): Promise<void>;
 }

@@ -29,6 +29,10 @@ let WishlistController = class WishlistController {
         const user = req.user;
         return this.wishlist.add(user, body);
     }
+    async removeByItemId(req, wishlistItemId) {
+        const user = req.user;
+        await this.wishlist.removeByWishlistItemId(user, Number(wishlistItemId));
+    }
     async remove(req, productId) {
         const user = req.user;
         await this.wishlist.remove(user, Number(productId));
@@ -52,6 +56,16 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], WishlistController.prototype, "add", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Delete)('items/:wishlistItemId'),
+    (0, common_1.HttpCode)(204),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('wishlistItemId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], WishlistController.prototype, "removeByItemId", null);
 __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Delete)(':productId'),

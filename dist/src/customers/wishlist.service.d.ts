@@ -26,6 +26,11 @@ export declare class WishlistService {
         originalPrice: number | null;
         status: string | null;
         customisationRequired: boolean;
+        wishlistItemId: number;
+        productId: number;
+        addedAt: string;
+        providerName: string | null;
+        artisanName: string | null;
     }>;
     add(user: AccessTokenPayload, body: {
         productId?: number;
@@ -53,7 +58,15 @@ export declare class WishlistService {
         originalPrice: number | null;
         status: string | null;
         customisationRequired: boolean;
+        wishlistItemId: number;
+        productId: number;
+        addedAt: string;
+        providerName: string | null;
+        artisanName: string | null;
     }>;
+    private itemInclude;
+    private resolveProviderName;
+    private toWishlistItemDto;
     listFullProducts(user: AccessTokenPayload): Promise<{
         data: {
             id: number;
@@ -78,6 +91,11 @@ export declare class WishlistService {
             originalPrice: number | null;
             status: string | null;
             customisationRequired: boolean;
+            wishlistItemId: number;
+            productId: number;
+            addedAt: string;
+            providerName: string | null;
+            artisanName: string | null;
         }[];
         total: number;
     }>;
@@ -105,8 +123,14 @@ export declare class WishlistService {
             originalPrice: number | null;
             status: string | null;
             customisationRequired: boolean;
+            wishlistItemId: number;
+            productId: number;
+            addedAt: string;
+            providerName: string | null;
+            artisanName: string | null;
         }[];
         total: number;
     }>;
-    remove(user: AccessTokenPayload, productId: number): Promise<void>;
+    remove(user: AccessTokenPayload, id: number): Promise<void>;
+    removeByWishlistItemId(user: AccessTokenPayload, wishlistItemId: number): Promise<void>;
 }

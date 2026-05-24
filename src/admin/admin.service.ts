@@ -9,40 +9,53 @@ export class AdminService {
   async dashboard() {
     const [
       totalUsers,
+      totalArtisans,
       artisansPending,
       artisansApproved,
       artisansRejected,
+      totalProducts,
       productsPending,
       productsApproved,
       productsRejected,
       totalOrders,
-      revenue,
     ] = await Promise.all([
       this.prisma.user.count(),
+      this.prisma.artisanProfile.count(),
       this.prisma.artisanProfile.count({ where: { status: 'pending' } }),
       this.prisma.artisanProfile.count({ where: { status: 'approved' } }),
       this.prisma.artisanProfile.count({ where: { status: 'rejected' } }),
+      this.prisma.product.count(),
       this.prisma.product.count({ where: { status: 'pending' } }),
       this.prisma.product.count({ where: { status: 'approved' } }),
       this.prisma.product.count({ where: { status: 'rejected' } }),
       this.prisma.order.count(),
-      this.prisma.order.aggregate({ _sum: { price: true } }),
     ]);
 
     return {
       totalUsers,
-      artisans: { pending: artisansPending, approved: artisansApproved, rejected: artisansRejected },
-      products: { pending: productsPending, approved: productsApproved, rejected: productsRejected },
+      totalArtisans,
+      artisansByStatus: {
+        pending: artisansPending,
+        approved: artisansApproved,
+        rejected: artisansRejected,
+      },
+      totalProducts,
+      productsByStatus: {
+        pending: productsPending,
+        approved: productsApproved,
+        rejected: productsRejected,
+      },
       totalOrders,
-      revenue: { total: revenue._sum.price ?? 0, currency: 'NGN' },
     };
   }
 
-  async listArtisans(page: number, pageSize: number) {
+  async listArtisans(page: number, pageSize: number, status?: string) {
     const skip = (page - 1) * pageSize;
+    const where = status ? { status } : {};
     const [totalItems, items] = await Promise.all([
-      this.prisma.artisanProfile.count(),
+      this.prisma.artisanProfile.count({ where }),
       this.prisma.artisanProfile.findMany({
+        where,
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
@@ -57,6 +70,7 @@ export class AdminService {
         name: a.user.name,
         email: a.user.email,
         brandName: a.brandName,
+        businessName: a.businessName,
         createdAt: a.createdAt.toISOString(),
       })),
       pagination: {
@@ -71,32 +85,101 @@ export class AdminService {
   async getArtisan(id: number) {
     const profile = await this.prisma.artisanProfile.findUnique({
       where: { userId: id },
-      include: { user: true, products: true },
+      include: { user: true },
     });
     if (!profile) {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
-    return profile;
+
+    const [productCount, orderCount] = await Promise.all([
+      this.prisma.product.count({ where: { providerId: id } }),
+      this.prisma.order.count({ where: { providerId: id } }),
+    ]);
+
+    const { passwordHash: _, ...user } = profile.user;
+
+    return {
+      artisanProfile: {
+        userId: profile.userId,
+        brandName: profile.brandName,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        about: profile.about,
+        description: profile.description,
+        country: profile.country,
+        address: profile.address,
+        city: profile.city,
+        state: profile.state,
+        location: profile.location,
+        category: profile.category,
+        styleTags: profile.styleTags,
+        serviceCategories: profile.serviceCategories,
+        heroImage: profile.heroImage,
+        storeImageUrl: profile.storeImageUrl,
+        coverImageUrl: profile.coverImageUrl,
+        images: profile.images,
+        status: profile.status,
+        rejectionReason: profile.rejectionReason,
+        verified: profile.verified,
+        featured: profile.featured,
+        rating: profile.rating,
+        reviewCount: profile.reviewCount,
+        createdAt: profile.createdAt.toISOString(),
+        updatedAt: profile.updatedAt.toISOString(),
+      },
+      businessProfile: {
+        businessName: profile.businessName,
+        paymentSchedule: profile.paymentSchedule,
+        depositPercentage: profile.depositPercentage,
+        refundPolicy: profile.refundPolicy,
+        acceptedPaymentMethods: profile.acceptedPaymentMethods,
+        installmentsAvailable: profile.installmentsAvailable,
+        installmentDetails: profile.installmentDetails,
+        customOrdersEnabled: profile.customOrdersEnabled,
+        rushOrderEnabled: profile.rushOrderEnabled,
+        rushOrderSurchargePercent: profile.rushOrderSurchargePercent,
+        estimatedDeliveryDays: profile.estimatedDeliveryDays,
+      },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl,
+        createdAt: user.createdAt.toISOString(),
+      },
+      productCount,
+      orderCount,
+    };
   }
 
   async patchArtisanStatus(id: number, status: 'approved' | 'rejected', reason?: string) {
     if (!['approved', 'rejected'].includes(status)) {
-      throw new BadRequestException({ message: 'Invalid status' });
+      throw new BadRequestException({ message: 'Invalid status', code: 'VALIDATION_ERROR' });
     }
 
-    await this.prisma.artisanProfile.update({
+    const updated = await this.prisma.artisanProfile.update({
       where: { userId: id },
       data: { status, rejectionReason: reason ?? null },
+      include: { user: true },
     });
 
-    return { id, status, rejectionReason: reason ?? null };
+    return {
+      id: updated.userId,
+      status: updated.status,
+      rejectionReason: updated.rejectionReason,
+      brandName: updated.brandName,
+      email: updated.user.email,
+    };
   }
 
-  async listProducts(page: number, pageSize: number) {
+  async listProducts(page: number, pageSize: number, status?: string) {
     const skip = (page - 1) * pageSize;
+    const where = status ? { status } : {};
     const [totalItems, items] = await Promise.all([
-      this.prisma.product.count(),
+      this.prisma.product.count({ where }),
       this.prisma.product.findMany({
+        where,
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
@@ -109,6 +192,8 @@ export class AdminService {
         id: p.id,
         status: p.status,
         name: p.name,
+        category: p.category,
+        price: p.price,
         artisan: p.provider?.name ?? null,
         providerId: p.providerId,
         createdAt: p.createdAt.toISOString(),
@@ -133,28 +218,43 @@ export class AdminService {
     return productToDto(product);
   }
 
-  async patchProductStatus(id: number, status: 'approved' | 'rejected', reason?: string) {
-    if (!['approved', 'rejected'].includes(status)) {
-      throw new BadRequestException({ message: 'Invalid status' });
+  async patchProductStatus(
+    id: number,
+    status: 'approved' | 'rejected' | 'draft',
+    reason?: string,
+  ) {
+    if (!['approved', 'rejected', 'draft'].includes(status)) {
+      throw new BadRequestException({ message: 'Invalid status', code: 'VALIDATION_ERROR' });
     }
 
-    await this.prisma.product.update({
+    const updated = await this.prisma.product.update({
       where: { id },
       data: { status, rejectionReason: reason ?? null },
     });
 
-    return { id, status, rejectionReason: reason ?? null };
+    return {
+      id: updated.id,
+      status: updated.status,
+      rejectionReason: updated.rejectionReason,
+      name: updated.name,
+    };
   }
 
-  async listUsers(page: number, pageSize: number) {
+  async listUsers(page: number, pageSize: number, role?: string) {
     const skip = (page - 1) * pageSize;
+
+    const where = role
+      ? { roles: { some: { role: { name: role } } } }
+      : undefined;
+
     const [totalItems, items] = await Promise.all([
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
       this.prisma.user.findMany({
+        where,
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
-        include: { roles: { include: { role: true } } },
+        include: { roles: { include: { role: true } }, artisanProfile: true },
       }),
     ]);
 
@@ -164,6 +264,7 @@ export class AdminService {
         name: u.name,
         email: u.email,
         roles: u.roles.map((r) => r.role.name),
+        artisanStatus: u.artisanProfile?.status ?? null,
         createdAt: u.createdAt.toISOString(),
       })),
       pagination: {
@@ -187,7 +288,25 @@ export class AdminService {
     if (!user) {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
-    const { passwordHash: _, ...safe } = user as typeof user & { passwordHash: string };
-    return safe;
+    const { passwordHash: _, roles, artisanProfile, addresses, ...rest } = user;
+
+    return {
+      ...rest,
+      createdAt: rest.createdAt.toISOString(),
+      updatedAt: rest.updatedAt.toISOString(),
+      roles: roles.map((r) => r.role.name),
+      artisanProfile: artisanProfile
+        ? {
+            userId: artisanProfile.userId,
+            brandName: artisanProfile.brandName,
+            businessName: artisanProfile.businessName,
+            status: artisanProfile.status,
+            category: artisanProfile.category,
+            city: artisanProfile.city,
+            state: artisanProfile.state,
+          }
+        : null,
+      customerProfile: addresses.length > 0 ? { addresses } : null,
+    };
   }
 }

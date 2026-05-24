@@ -8,7 +8,7 @@ export class AdminRoleGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     const user = req.user as AccessTokenPayload | undefined;
     if (!user || user.role !== 'admin') {
-      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+      throw new ForbiddenException({ message: 'Access denied', code: 'FORBIDDEN' });
     }
     return true;
   }

@@ -111,9 +111,17 @@ export class AuthController {
     return this.auth.updateProfile(user!.sub, dto);
   }
 
-  @Post('change-password')
+  @Patch('change-password')
   @UseGuards(JwtAuthGuard)
   async changePassword(@Req() req: Request, @Body() dto: ChangePasswordDto) {
+    const user = req.user as AccessTokenPayload | undefined;
+    return this.auth.changePassword(user!.sub, dto);
+  }
+
+  /** @deprecated Use PATCH /auth/change-password */
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePasswordLegacy(@Req() req: Request, @Body() dto: ChangePasswordDto) {
     const user = req.user as AccessTokenPayload | undefined;
     return this.auth.changePassword(user!.sub, dto);
   }

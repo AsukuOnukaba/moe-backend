@@ -44,17 +44,25 @@ let MoeHttpExceptionFilter = class MoeHttpExceptionFilter {
             : responseBody?.message) ??
             (isHttp ? exception.message : 'Internal server error');
         const msgString = Array.isArray(message) ? message.join(', ') : String(message);
-        let code = 'INTERNAL_SERVER_ERROR';
-        if (status === 400 || status === 422)
-            code = 'VALIDATION_ERROR';
-        else if (status === 401)
-            code = 'AUTH_TOKEN_EXPIRED';
-        else if (status === 403)
-            code = 'RESOURCE_NOT_FOUND';
-        else if (status === 404)
-            code = 'RESOURCE_NOT_FOUND';
-        else if (status === 429)
-            code = 'RATE_LIMIT_EXCEEDED';
+        const responseCode = responseBody &&
+            typeof responseBody === 'object' &&
+            'code' in responseBody &&
+            typeof responseBody.code === 'string'
+            ? responseBody.code
+            : undefined;
+        let code = responseCode ?? 'INTERNAL_SERVER_ERROR';
+        if (!responseCode) {
+            if (status === 400 || status === 422)
+                code = 'VALIDATION_ERROR';
+            else if (status === 401)
+                code = 'AUTH_TOKEN_EXPIRED';
+            else if (status === 403)
+                code = 'FORBIDDEN';
+            else if (status === 404)
+                code = 'RESOURCE_NOT_FOUND';
+            else if (status === 429)
+                code = 'RATE_LIMIT_EXCEEDED';
+        }
         const errors = normalizeValidationErrors(responseBody);
         const body = {
             message: msgString,

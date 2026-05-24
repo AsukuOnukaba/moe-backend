@@ -143,4 +143,7 @@ export declare class AuthController {
     changePassword(req: Request, dto: ChangePasswordDto): Promise<{
         message: string;
     }>;
+    changePasswordLegacy(req: Request, dto: ChangePasswordDto): Promise<{
+        message: string;
+    }>;
 }

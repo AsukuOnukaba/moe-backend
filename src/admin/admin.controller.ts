@@ -14,10 +14,15 @@ export class AdminController {
   }
 
   @Get('artisans')
-  listArtisans(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  listArtisans(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
+  ) {
     return this.admin.listArtisans(
       Math.max(1, Number(page ?? 1)),
       Math.max(1, Math.min(100, Number(pageSize ?? 20))),
+      status,
     );
   }
 
@@ -35,10 +40,15 @@ export class AdminController {
   }
 
   @Get('products')
-  listProducts(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  listProducts(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
+  ) {
     return this.admin.listProducts(
       Math.max(1, Number(page ?? 1)),
       Math.max(1, Math.min(100, Number(pageSize ?? 20))),
+      status,
     );
   }
 
@@ -50,16 +60,21 @@ export class AdminController {
   @Patch('products/:id/status')
   patchProductStatus(
     @Param('id') id: string,
-    @Body() body: { status: 'approved' | 'rejected'; reason?: string },
+    @Body() body: { status: 'approved' | 'rejected' | 'draft'; reason?: string },
   ) {
     return this.admin.patchProductStatus(Number(id), body.status, body.reason);
   }
 
   @Get('users')
-  listUsers(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  listUsers(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('role') role?: string,
+  ) {
     return this.admin.listUsers(
       Math.max(1, Number(page ?? 1)),
       Math.max(1, Math.min(100, Number(pageSize ?? 20))),
+      role,
     );
   }
 

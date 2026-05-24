@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -466,10 +467,10 @@ export class AuthService {
 
     const isMatch = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!isMatch) {
-      throw new UnauthorizedException('Current password is incorrect.');
+      throw new BadRequestException({ message: 'Current password is incorrect' });
     }
 
-    const hash = await bcrypt.hash(dto.newPassword, 10);
+    const hash = await bcrypt.hash(dto.newPassword, 12);
 
     await this.prisma.user.update({
       where: { id: userId },

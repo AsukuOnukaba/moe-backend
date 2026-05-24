@@ -83,6 +83,10 @@ let AuthController = class AuthController {
         const user = req.user;
         return this.auth.changePassword(user.sub, dto);
     }
+    async changePasswordLegacy(req, dto) {
+        const user = req.user;
+        return this.auth.changePassword(user.sub, dto);
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
@@ -167,7 +171,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "updateProfile", null);
 __decorate([
-    (0, common_1.Post)('change-password'),
+    (0, common_1.Patch)('change-password'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
@@ -175,6 +179,15 @@ __decorate([
     __metadata("design:paramtypes", [Object, change_password_dto_1.ChangePasswordDto]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "changePassword", null);
+__decorate([
+    (0, common_1.Post)('change-password'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, change_password_dto_1.ChangePasswordDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "changePasswordLegacy", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('auth'),
     __metadata("design:paramtypes", [auth_service_1.AuthService,

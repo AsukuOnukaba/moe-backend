@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { PrismaService } from '../database/prisma.service';
@@ -266,5 +267,226 @@ export class OrdersService {
     });
 
     return this.toOrderResponse(updated);
+  }
+
+  private formatOrderNumber(id: number) {
+    return `ORD-${String(id).padStart(3, '0')}`;
+  }
+
+  private async loadCustomerMap(customerIds: number[]) {
+    const unique = [...new Set(customerIds)];
+    if (unique.length === 0) return new Map<number, { name: string; email: string }>();
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true, name: true, email: true },
+    });
+
+    return new Map(users.map((u) => [u.id, { name: u.name, email: u.email }]));
+  }
+
+  private toAdminListItem(
+    dbOrder: {
+      id: number;
+      customerId: number;
+      productName: string | null;
+      productImage: string | null;
+      providerId: number | null;
+      providerName: string | null;
+      status: string;
+      price: number | null;
+      currency: string;
+      paymentStatus: string;
+      paymentMethod: string;
+      isCustomOrder: boolean;
+      createdAt: Date;
+    },
+    customer?: { name: string; email: string },
+  ) {
+    return {
+      id: dbOrder.id,
+      orderNumber: this.formatOrderNumber(dbOrder.id),
+      status: dbOrder.status,
+      productName: dbOrder.productName,
+      productImage: dbOrder.productImage,
+      providerId: dbOrder.providerId,
+      providerName: dbOrder.providerName,
+      customerId: dbOrder.customerId,
+      customerName: customer?.name ?? null,
+      customerEmail: customer?.email ?? null,
+      price: dbOrder.price,
+      currency: dbOrder.currency,
+      paymentStatus: dbOrder.paymentStatus,
+      paymentMethod: dbOrder.paymentMethod,
+      isCustomOrder: dbOrder.isCustomOrder,
+      createdAt: dbOrder.createdAt.toISOString(),
+    };
+  }
+
+  async adminList(query: Record<string, unknown>) {
+    const page = Math.max(1, Number(query?.page ?? 1));
+    const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
+    const skip = (page - 1) * pageSize;
+
+    const status = typeof query?.status === 'string' ? query.status.trim() : undefined;
+    const paymentStatus =
+      typeof query?.paymentStatus === 'string' ? query.paymentStatus.trim() : undefined;
+    const q = typeof query?.q === 'string' ? query.q.trim() : '';
+
+    const where: Record<string, unknown> = {};
+    if (status) where.status = status;
+    if (paymentStatus) where.paymentStatus = paymentStatus;
+
+    if (q.length > 0) {
+      const asId = Number(q.replace(/^ORD-/i, ''));
+      const or: Record<string, unknown>[] = [
+        { productName: { contains: q, mode: 'insensitive' } },
+        { providerName: { contains: q, mode: 'insensitive' } },
+      ];
+      if (!Number.isNaN(asId)) or.push({ id: asId });
+
+      const matchingCustomers = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { email: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+        take: 50,
+      });
+      if (matchingCustomers.length > 0) {
+        or.push({ customerId: { in: matchingCustomers.map((c) => c.id) } });
+      }
+
+      where.OR = or;
+    }
+
+    const [totalItems, items] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const customerMap = await this.loadCustomerMap(items.map((o) => o.customerId));
+
+    return {
+      data: items.map((item) =>
+        this.toAdminListItem(item, customerMap.get(item.customerId)),
+      ),
+      pagination: {
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+        totalItems,
+      },
+    };
+  }
+
+  async adminGetById(orderId: number) {
+    const dbOrder = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
+    if (!dbOrder) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    const customer = await this.prisma.user.findUnique({
+      where: { id: dbOrder.customerId },
+      select: { id: true, name: true, email: true, phone: true },
+    });
+
+    return {
+      orderNumber: this.formatOrderNumber(dbOrder.id),
+      ...this.toOrderResponse(dbOrder),
+      customer: customer
+        ? {
+            id: customer.id,
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+          }
+        : null,
+    };
+  }
+
+  private static readonly ADMIN_ORDER_STATUSES = [
+    'pending',
+    'confirmed',
+    'in_progress',
+    'approved',
+    'shipped',
+    'delivered',
+    'cancelled',
+    'rejected',
+  ] as const;
+
+  private static readonly ADMIN_PAYMENT_STATUSES = ['unpaid', 'paid', 'refunded', 'failed'] as const;
+
+  async adminPatch(orderId: number, body: Record<string, unknown>) {
+    const dbOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!dbOrder) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    if (typeof body?.status === 'string') {
+      const status = body.status.trim();
+      if (!OrdersService.ADMIN_ORDER_STATUSES.includes(status as (typeof OrdersService.ADMIN_ORDER_STATUSES)[number])) {
+        throw new BadRequestException({
+          message: `Invalid status. Allowed: ${OrdersService.ADMIN_ORDER_STATUSES.join(', ')}`,
+          code: 'VALIDATION_ERROR',
+        });
+      }
+    }
+
+    if (typeof body?.paymentStatus === 'string') {
+      const paymentStatus = body.paymentStatus.trim();
+      if (
+        !OrdersService.ADMIN_PAYMENT_STATUSES.includes(
+          paymentStatus as (typeof OrdersService.ADMIN_PAYMENT_STATUSES)[number],
+        )
+      ) {
+        throw new BadRequestException({
+          message: `Invalid paymentStatus. Allowed: ${OrdersService.ADMIN_PAYMENT_STATUSES.join(', ')}`,
+          code: 'VALIDATION_ERROR',
+        });
+      }
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        ...(typeof body?.status === 'string' ? { status: body.status.trim() } : {}),
+        ...(typeof body?.paymentReference === 'string'
+          ? { paymentReference: body.paymentReference }
+          : {}),
+        ...(typeof body?.paymentStatus === 'string'
+          ? { paymentStatus: body.paymentStatus.trim() }
+          : {}),
+        ...(typeof body?.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
+      },
+    });
+
+    const customer = await this.prisma.user.findUnique({
+      where: { id: updated.customerId },
+      select: { id: true, name: true, email: true, phone: true },
+    });
+
+    return {
+      orderNumber: this.formatOrderNumber(updated.id),
+      ...this.toOrderResponse(updated),
+      customer: customer
+        ? {
+            id: customer.id,
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+          }
+        : null,
+    };
   }
 }

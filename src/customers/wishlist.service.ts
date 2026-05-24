@@ -31,23 +31,68 @@ export class WishlistService {
     });
 
     if (existing) {
-      return productToDto(product);
+      const withProduct = await this.prisma.wishlistItem.findUnique({
+        where: { userId_productId: { userId, productId } },
+        include: this.itemInclude(),
+      });
+      return this.toWishlistItemDto(withProduct!);
     }
 
-    await this.prisma.wishlistItem.create({ data: { userId, productId } });
-    return productToDto(product);
+    const created = await this.prisma.wishlistItem.create({
+      data: { userId, productId },
+      include: this.itemInclude(),
+    });
+    return this.toWishlistItemDto(created);
+  }
+
+  private itemInclude() {
+    return {
+      product: {
+        include: {
+          provider: { include: { artisanProfile: true } },
+        },
+      },
+    } as const;
+  }
+
+  private resolveProviderName(product: {
+    provider?: {
+      name: string;
+      artisanProfile?: { brandName: string | null } | null;
+    } | null;
+  }) {
+    const provider = product.provider;
+    if (!provider) return null;
+    return provider.artisanProfile?.brandName ?? provider.name;
+  }
+
+  private toWishlistItemDto(item: {
+    id: number;
+    productId: number;
+    addedAt: Date;
+    product: Parameters<WishlistService['resolveProviderName']>[0] & Parameters<typeof productToDto>[0];
+  }) {
+    const providerName = this.resolveProviderName(item.product);
+    return {
+      wishlistItemId: item.id,
+      productId: item.productId,
+      addedAt: item.addedAt.toISOString(),
+      providerName,
+      artisanName: providerName,
+      ...productToDto(item.product),
+    };
   }
 
   async listFullProducts(user: AccessTokenPayload) {
     const userId = user.sub;
     const items = await this.prisma.wishlistItem.findMany({
       where: { userId },
-      include: { product: true },
+      include: this.itemInclude(),
       orderBy: { addedAt: 'desc' },
     });
 
     return {
-      data: items.map((item) => productToDto(item.product)),
+      data: items.map((item) => this.toWishlistItemDto(item)),
       total: items.length,
     };
   }
@@ -56,18 +101,30 @@ export class WishlistService {
     return this.listFullProducts(user);
   }
 
-  async remove(user: AccessTokenPayload, productId: number) {
+  /**
+   * Removes a wishlist entry by productId or wishlistItemId.
+   * Idempotent — succeeds with no error when the item is already gone.
+   */
+  async remove(user: AccessTokenPayload, id: number) {
     const userId = user.sub;
-    const existing = await this.prisma.wishlistItem.findUnique({
-      where: { userId_productId: { userId, productId } },
-    });
-
-    if (!existing) {
-      throw new BadRequestException({ message: 'Not found' });
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new BadRequestException({
+        message: 'Invalid id',
+        code: 'VALIDATION_ERROR',
+      });
     }
 
-    await this.prisma.wishlistItem.delete({
-      where: { userId_productId: { userId, productId } },
+    const byProduct = await this.prisma.wishlistItem.deleteMany({
+      where: { userId, productId: id },
     });
+    if (byProduct.count > 0) return;
+
+    await this.prisma.wishlistItem.deleteMany({
+      where: { userId, id },
+    });
+  }
+
+  async removeByWishlistItemId(user: AccessTokenPayload, wishlistItemId: number) {
+    return this.remove(user, wishlistItemId);
   }
 }

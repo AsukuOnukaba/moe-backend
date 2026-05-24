@@ -1,10 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto } from '../common/product-mapper';
+import { OrdersService } from '../orders/orders.service';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly orders: OrdersService,
+  ) {}
 
   async dashboard() {
     const [
@@ -308,5 +312,17 @@ export class AdminService {
         : null,
       customerProfile: addresses.length > 0 ? { addresses } : null,
     };
+  }
+
+  listOrders(query: Record<string, unknown>) {
+    return this.orders.adminList(query);
+  }
+
+  getOrder(id: number) {
+    return this.orders.adminGetById(id);
+  }
+
+  patchOrder(id: number, body: Record<string, unknown>) {
+    return this.orders.adminPatch(id, body);
   }
 }

@@ -82,4 +82,31 @@ export class AdminController {
   getUser(@Param('id') id: string) {
     return this.admin.getUser(Number(id));
   }
+
+  @Get('orders')
+  listOrders(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.admin.listOrders({
+      page,
+      pageSize,
+      status,
+      paymentStatus,
+      q,
+    });
+  }
+
+  @Get('orders/:id')
+  getOrder(@Param('id') id: string) {
+    return this.admin.getOrder(Number(id));
+  }
+
+  @Patch('orders/:id')
+  patchOrder(@Param('id') id: string, @Body() body: Record<string, unknown>) {
+    return this.admin.patchOrder(Number(id), body);
+  }
 }

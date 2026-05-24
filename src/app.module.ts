@@ -22,6 +22,7 @@ import { SearchModule } from './search/search.module';
 import { SupportModule } from './support/support.module';
 import { CustomizationModule } from './customization/customization.module';
 import { AdminModule } from './admin/admin.module';
+import { MetaModule } from './meta/meta.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { AdminModule } from './admin/admin.module';
     SupportModule,
     CustomizationModule,
     AdminModule,
+    MetaModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

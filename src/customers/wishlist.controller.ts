@@ -23,6 +23,17 @@ export class WishlistController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Delete('items/:wishlistItemId')
+  @HttpCode(204)
+  async removeByItemId(
+    @Req() req: Request,
+    @Param('wishlistItemId') wishlistItemId: string,
+  ) {
+    const user = req.user as AccessTokenPayload;
+    await this.wishlist.removeByWishlistItemId(user, Number(wishlistItemId));
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Delete(':productId')
   @HttpCode(204)
   async remove(@Req() req: Request, @Param('productId') productId: string) {

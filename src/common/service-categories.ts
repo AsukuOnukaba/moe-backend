@@ -11,15 +11,12 @@ export const SERVICE_CATEGORIES: readonly ServiceCategory[] = [
   { id: 'tailoring', name: 'Tailoring' },
   { id: 'shoemaking', name: 'Shoemaking' },
   { id: 'leatherwork', name: 'Leatherwork' },
-  { id: 'leather-goods', name: 'Leather Goods' },
-  { id: 'canvas', name: 'Canvas & Art' },
-  { id: 'crafts', name: 'Crafts' },
-  { id: 'jewelry', name: 'Jewelry' },
-  { id: 'furniture', name: 'Furniture' },
-  { id: 'home-decor', name: 'Home Decor' },
-  { id: 'footwear', name: 'Footwear' },
   { id: 'beauty', name: 'Beauty' },
-  { id: 'fashion', name: 'Fashion' },
+  { id: 'accessories', name: 'Accessories' },
+  { id: 'furniture', name: 'Furniture' },
+  { id: 'art', name: 'Art' },
+  { id: 'canvas', name: 'Canvas & Art (legacy)' },
+  { id: 'crafts', name: 'Crafts (legacy)' },
 ] as const;
 
 export const SERVICE_CATEGORY_NAMES = SERVICE_CATEGORIES.map((c) => c.name);

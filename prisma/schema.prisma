@@ -23,9 +23,13 @@ model User {
   addresses      Address[]
   wishlistItems  WishlistItem[]
   paymentMethods PaymentMethod[]
+  preference     UserPreference?
 
-  artisanProfile ArtisanProfile?
-  products       Product[]
+  artisanProfile      ArtisanProfile?
+  products            Product[]
+  customerConversations Conversation[] @relation("CustomerConversations")
+  sentMessages        Message[]
+  artisanReviews      ArtisanReview[]  @relation("CustomerReviews")
 }
 
 model Address {
@@ -90,6 +94,9 @@ model ArtisanProfile {
   installmentDetails     String?
 
   products Product[]
+  reviews  ArtisanReview[]
+
+  providerConversations Conversation[] @relation("ProviderConversations")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -238,4 +245,64 @@ model Order {
   @@index([customerId])
   @@index([productId])
   @@index([providerId])
+}
+
+model UserPreference {
+  userId      Int      @id
+  categories  String[] @default([])
+  styleTags   String[] @default([])
+  budget      Float    @default(0)
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ArtisanReview {
+  id         Int      @id @default(autoincrement())
+  artisanId  Int
+  customerId Int
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  artisan  ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
+  customer User           @relation("CustomerReviews", fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, artisanId])
+  @@index([artisanId])
+}
+
+model Conversation {
+  id              Int       @id @default(autoincrement())
+  customerId      Int
+  providerId      Int
+  lastMessage     String?
+  lastMessageTime DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  customer User           @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
+  provider ArtisanProfile @relation("ProviderConversations", fields: [providerId], references: [userId], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([customerId, providerId])
+  @@index([customerId])
+  @@index([providerId])
+}
+
+model Message {
+  id             Int       @id @default(autoincrement())
+  conversationId Int
+  senderId       Int
+  senderType     String
+  content        String
+  sentAt         DateTime  @default(now())
+  readAt         DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
 }

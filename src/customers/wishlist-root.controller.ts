@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -21,6 +22,15 @@ export class WishlistRootController {
   @Get()
   list(@Req() req: Request) {
     return this.wishlist.listFullProducts(req.user as AccessTokenPayload);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('items')
+  addItem(@Req() req: Request, @Body() body: { productId?: number }) {
+    return this.wishlist.addByProductId(
+      req.user as AccessTokenPayload,
+      Number(body?.productId),
+    );
   }
 
   @UseGuards(JwtAuthGuard)

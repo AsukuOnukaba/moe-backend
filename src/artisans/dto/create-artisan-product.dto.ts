@@ -1,12 +1,14 @@
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
   Min,
 } from 'class-validator';
+import { ALL_PRODUCT_CATEGORIES } from '../../common/product-categories';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -47,6 +49,9 @@ export class CreateArtisanProductDto {
 
   @IsOptional()
   @IsString()
+  @IsIn([...ALL_PRODUCT_CATEGORIES], {
+    message: `category must be one of: ${ALL_PRODUCT_CATEGORIES.join(', ')}`,
+  })
   category?: string | null;
 
   // Comma-separated strings (backend stores as text)

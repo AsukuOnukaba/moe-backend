@@ -1,41 +1,74 @@
 import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
-
-type UserPreference = {
-  id: number;
-  userId: number;
-  categories: string[];
-  styleTags: string[];
-  budget: number;
-  updatedAt: string;
-};
-
-const prefStore = new Map<number, UserPreference>();
-let prefIdSeq = 1;
 
 @Injectable()
 export class PreferencesService {
-  async get(user: AccessTokenPayload) {
-    return prefStore.get(user.sub) ?? null;
+  constructor(private readonly prisma: PrismaService) {}
+
+  private toDto(row: {
+    userId: number;
+    categories: string[];
+    styleTags: string[];
+    budget: number;
+    updatedAt: Date;
+  }) {
+    return {
+      categories: row.categories,
+      styleTags: row.styleTags,
+      budget: row.budget,
+      updatedAt: row.updatedAt.toISOString(),
+    };
   }
 
-  async upsert(user: AccessTokenPayload, body: any) {
-    const existing = prefStore.get(user.sub);
-    const next: UserPreference = {
-      id: existing?.id ?? prefIdSeq++,
-      userId: user.sub,
-      categories: Array.isArray(body?.categories) ? body.categories : existing?.categories ?? [],
-      styleTags: Array.isArray(body?.styleTags) ? body.styleTags : existing?.styleTags ?? [],
-      budget: typeof body?.budget === 'number' ? body.budget : existing?.budget ?? 0,
-      updatedAt: new Date().toISOString(),
-    };
-    prefStore.set(user.sub, next);
-    return next;
+  async get(user: AccessTokenPayload) {
+    const row = await this.prisma.userPreference.findUnique({
+      where: { userId: user.sub },
+    });
+    return row ? this.toDto(row) : null;
+  }
+
+  async upsert(
+    user: AccessTokenPayload,
+    body: {
+      categories?: string[];
+      styleTags?: string[];
+      budget?: number;
+    },
+  ) {
+    const existing = await this.prisma.userPreference.findUnique({
+      where: { userId: user.sub },
+    });
+
+    const row = await this.prisma.userPreference.upsert({
+      where: { userId: user.sub },
+      create: {
+        userId: user.sub,
+        categories: Array.isArray(body?.categories) ? body.categories : [],
+        styleTags: Array.isArray(body?.styleTags) ? body.styleTags : [],
+        budget: typeof body?.budget === 'number' ? body.budget : 0,
+      },
+      update: {
+        categories: Array.isArray(body?.categories)
+          ? body.categories
+          : existing?.categories ?? [],
+        styleTags: Array.isArray(body?.styleTags)
+          ? body.styleTags
+          : existing?.styleTags ?? [],
+        budget:
+          typeof body?.budget === 'number'
+            ? body.budget
+            : (existing?.budget ?? 0),
+      },
+    });
+
+    return this.toDto(row);
   }
 
   async clear(user: AccessTokenPayload) {
-    prefStore.delete(user.sub);
+    await this.prisma.userPreference.deleteMany({
+      where: { userId: user.sub },
+    });
     return { success: true };
   }
 }
-

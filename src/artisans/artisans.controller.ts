@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
+import { ArtisanReviewsService } from './artisan-reviews.service';
 import { ArtisansService } from './artisans.service';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
@@ -25,7 +26,10 @@ import { createMulterOptions } from '../upload/multer.config';
 
 @Controller('artisans')
 export class ArtisansController {
-  constructor(private readonly artisans: ArtisansService) {}
+  constructor(
+    private readonly artisans: ArtisansService,
+    private readonly reviews: ArtisanReviewsService,
+  ) {}
 
   @Get('filter-meta')
   filterMeta() {
@@ -35,6 +39,25 @@ export class ArtisansController {
   @Get(':id/rush-order-config')
   rushOrderConfig(@Param('id') id: string) {
     return this.artisans.getRushOrderConfig(Number(id));
+  }
+
+  @Get(':id/reviews')
+  listReviews(@Param('id') id: string, @Query() query: Record<string, string>) {
+    return this.reviews.list(Number(id), {
+      page: query.page ? Number(query.page) : undefined,
+      pageSize: query.pageSize ? Number(query.pageSize) : undefined,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/reviews')
+  upsertReview(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Body() body: { rating?: number; comment?: string },
+  ) {
+    const user = req.user as AccessTokenPayload;
+    return this.reviews.upsert(Number(id), user, body);
   }
 
   @Get()

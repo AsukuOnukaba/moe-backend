@@ -11,6 +11,7 @@ import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 import { productToDto } from '../common/product-mapper';
+import { normalizeProductCategory } from '../common/product-categories';
 import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service-categories';
 
 function asArrayFromComma(value: string | null | undefined): string[] {
@@ -225,7 +226,7 @@ export class ArtisansService {
         originalPrice: dto.priceMax ?? dto.originalPrice ?? null,
         currency: dto.currency ?? 'NGN',
         images: dto.images ?? [],
-        category: dto.category ?? null,
+        category: dto.category ? normalizeProductCategory(dto.category) : null,
         materials: dto.materials ?? null,
         tags: dto.tags ?? null,
         featured: dto.featured ?? false,
@@ -279,7 +280,13 @@ export class ArtisansService {
             : {}),
         ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
         ...(dto.images !== undefined ? { images: dto.images ?? [] } : {}),
-        ...(dto.category !== undefined ? { category: dto.category } : {}),
+        ...(dto.category !== undefined
+          ? {
+              category: dto.category
+                ? normalizeProductCategory(dto.category)
+                : null,
+            }
+          : {}),
         ...(dto.materials !== undefined ? { materials: dto.materials } : {}),
         ...(dto.tags !== undefined ? { tags: dto.tags } : {}),
         ...(dto.featured !== undefined ? { featured: dto.featured } : {}),

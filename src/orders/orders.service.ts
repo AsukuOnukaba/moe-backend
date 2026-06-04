@@ -202,8 +202,15 @@ export class OrdersService {
         customisationData,
       );
       if (!validation.valid) {
+        const parts: string[] = [];
+        if (validation.unknownKeys.length) {
+          parts.push(`unknown keys: ${validation.unknownKeys.join(', ')}`);
+        }
+        if (validation.missingRequired.length) {
+          parts.push(`missing required: ${validation.missingRequired.join(', ')}`);
+        }
         throw new BadRequestException({
-          message: `Unknown customisation keys: ${validation.unknownKeys.join(', ')}`,
+          message: `Invalid customisation (${parts.join('; ')})`,
           code: 'INVALID_CUSTOMISATION',
         });
       }

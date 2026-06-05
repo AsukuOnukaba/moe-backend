@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { ALL_PRODUCT_CATEGORIES } from '../common/product-categories';
+import { PRODUCT_CATEGORIES } from '../common/product-categories';
 import { SERVICE_CATEGORIES } from '../common/service-categories';
 
 @Controller('meta')
@@ -16,6 +16,6 @@ export class MetaController {
 
   @Get('product-categories')
   productCategories() {
-    return { categories: [...ALL_PRODUCT_CATEGORIES] };
+    return { categories: [...PRODUCT_CATEGORIES] };
   }
 }

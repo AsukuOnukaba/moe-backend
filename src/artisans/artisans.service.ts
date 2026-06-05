@@ -234,6 +234,7 @@ export class ArtisansService {
         isTrending: dto.isTrending ?? false,
         isNewArrival: dto.isNewArrival ?? false,
         discountPercent: dto.discountPercent ?? null,
+        estimatedDelivery: dto.estimatedDelivery ?? null,
         estimatedDeliveryDays: dto.estimatedDeliveryDays ?? 7,
         status: 'pending',
       },
@@ -299,6 +300,9 @@ export class ArtisansService {
           : {}),
         ...(dto.discountPercent !== undefined
           ? { discountPercent: dto.discountPercent }
+          : {}),
+        ...(dto.estimatedDelivery !== undefined
+          ? { estimatedDelivery: dto.estimatedDelivery }
           : {}),
         ...(dto.estimatedDeliveryDays !== undefined
           ? { estimatedDeliveryDays: dto.estimatedDeliveryDays }

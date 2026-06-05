@@ -6,9 +6,10 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
-import { ALL_PRODUCT_CATEGORIES } from '../../common/product-categories';
+import { PRODUCT_CATEGORIES } from '../../common/product-categories';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -49,8 +50,8 @@ export class CreateArtisanProductDto {
 
   @IsOptional()
   @IsString()
-  @IsIn([...ALL_PRODUCT_CATEGORIES], {
-    message: `category must be one of: ${ALL_PRODUCT_CATEGORIES.join(', ')}`,
+  @IsIn([...PRODUCT_CATEGORIES], {
+    message: `category must be one of: ${PRODUCT_CATEGORIES.join(', ')}`,
   })
   category?: string | null;
 
@@ -82,6 +83,11 @@ export class CreateArtisanProductDto {
   @IsOptional()
   @IsNumber()
   discountPercent?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  estimatedDelivery?: string | null;
 
   @IsOptional()
   @IsInt()

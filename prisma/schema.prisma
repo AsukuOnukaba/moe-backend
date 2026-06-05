@@ -25,11 +25,12 @@ model User {
   paymentMethods PaymentMethod[]
   preference     UserPreference?
 
-  artisanProfile      ArtisanProfile?
-  products            Product[]
-  customerConversations Conversation[] @relation("CustomerConversations")
-  sentMessages        Message[]
-  artisanReviews      ArtisanReview[]  @relation("CustomerReviews")
+  artisanProfile        ArtisanProfile?
+  products              Product[]
+  customerConversations Conversation[]  @relation("CustomerConversations")
+  sentMessages          Message[]
+  artisanReviews        ArtisanReview[] @relation("CustomerReviews")
+  productReviews        ProductReview[]
 }
 
 model Address {
@@ -159,12 +160,14 @@ model Product {
   isNewArrival    Boolean @default(false)
   discountPercent Float?
 
-  estimatedDeliveryDays Int @default(7)
+  estimatedDeliveryDays Int     @default(7)
+  estimatedDelivery     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   wishlistItems WishlistItem[]
+  reviews       ProductReview[]
 
   @@index([providerId])
   @@index([artisanId])
@@ -255,6 +258,23 @@ model UserPreference {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ProductReview {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  customerId Int
+  rating     Int
+  review     String?
+  status     String   @default("approved")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer User    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
+  @@index([productId])
 }
 
 model ArtisanReview {

@@ -20,6 +20,7 @@ export function productToDto(p: {
   originalPrice?: number | null;
   currency?: string | null;
   estimatedDeliveryDays?: number | null;
+  estimatedDelivery?: string | null;
   materials?: string | null;
   tags?: string | null;
   images?: string[] | null;
@@ -41,6 +42,7 @@ export function productToDto(p: {
     priceRange: buildPriceRange(p),
     currency: p.currency ?? 'NGN',
     estimatedDeliveryDays: p.estimatedDeliveryDays ?? 7,
+    estimatedDelivery: p.estimatedDelivery ?? null,
     materials: p.materials ?? '',
     tags: toTagArray(p.tags ?? null),
     images: Array.isArray(p.images) ? p.images : (p.imageUrl ? [p.imageUrl] : []),

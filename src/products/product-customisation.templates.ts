@@ -10,10 +10,17 @@ export type CustomisationField = {
 
 /** Maps client keywords (product name / legacy category) to template keys. */
 const CATEGORY_ALIASES: Record<string, string> = {
-  canvas: 'canvas',
-  crafts: 'crafts',
-  'canvas & art': 'art',
-  jewelry: 'accessories',
+  accessories: 'jewellery',
+  jewelry: 'jewellery',
+  jewellery: 'jewellery',
+  furniture: 'home_and_decor',
+  'home decor': 'home_and_decor',
+  'home & decor': 'home_and_decor',
+  art: 'arts_and_crafts',
+  canvas: 'arts_and_crafts',
+  crafts: 'arts_and_crafts',
+  'arts and crafts': 'arts_and_crafts',
+  'canvas & art': 'arts_and_crafts',
   'leather goods': 'leatherwork',
   footwear: 'shoemaking',
   fashion: 'tailoring',
@@ -105,7 +112,7 @@ const TEMPLATES: Record<string, CustomisationField[]> = {
       options: ['matte', 'dewy', 'natural'],
     },
   ],
-  accessories: [
+  jewellery: [
     {
       key: 'size',
       label: 'Size',
@@ -115,41 +122,27 @@ const TEMPLATES: Record<string, CustomisationField[]> = {
     { key: 'colorPreference', label: 'Color preference', type: 'text' },
     { key: 'materialPreference', label: 'Material preference', type: 'text' },
   ],
-  furniture: [
+  home_and_decor: [
     { key: 'dimensions', label: 'Dimensions', type: 'text', required: true },
     {
       key: 'woodFinish',
-      label: 'Wood finish',
+      label: 'Finish',
       type: 'select',
       options: ['natural', 'stained', 'painted', 'varnished'],
     },
     { key: 'notes', label: 'Notes', type: 'text' },
   ],
-  art: [
+  arts_and_crafts: [
     {
       key: 'canvasSize',
-      label: 'Canvas size',
+      label: 'Size',
       type: 'select',
       options: ['small', 'medium', 'large', 'extra large'],
       required: true,
     },
     { key: 'colorPalette', label: 'Color palette', type: 'text' },
-    { key: 'inscription', label: 'Inscription', type: 'text' },
-  ],
-  canvas: [
-    {
-      key: 'canvasSize',
-      label: 'Canvas size',
-      type: 'select',
-      options: ['small', 'medium', 'large', 'extra large'],
-      required: true,
-    },
-    { key: 'colorPalette', label: 'Color palette', type: 'text' },
-    { key: 'inscription', label: 'Inscription', type: 'text' },
-  ],
-  crafts: [
-    { key: 'dimensions', label: 'Dimensions', type: 'text' },
     { key: 'materialPreference', label: 'Material preference', type: 'text' },
+    { key: 'inscription', label: 'Inscription', type: 'text' },
   ],
 };
 

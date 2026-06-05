@@ -46,21 +46,6 @@ export class ArtisanReviewsService {
     };
   }
 
-  private async refreshArtisanRating(artisanId: number) {
-    const agg = await this.prisma.artisanReview.aggregate({
-      where: { artisanId },
-      _avg: { rating: true },
-      _count: { id: true },
-    });
-    await this.prisma.artisanProfile.update({
-      where: { userId: artisanId },
-      data: {
-        rating: agg._avg.rating ?? 0,
-        reviewCount: agg._count.id,
-      },
-    });
-  }
-
   async list(artisanId: number, query: { page?: number; pageSize?: number }) {
     await this.ensureArtisan(artisanId);
     const page = Math.max(1, Number(query?.page ?? 1));
@@ -120,7 +105,6 @@ export class ArtisanReviewsService {
       include: { customer: { select: { name: true } } },
     });
 
-    await this.refreshArtisanRating(artisanId);
     return this.toReviewDto(review);
   }
 }

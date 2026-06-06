@@ -39,7 +39,7 @@ export class CategoriesService {
       this.prisma.product.groupBy({
         by: ['category'],
         _count: { id: true },
-        where: { category: { not: null } },
+        where: { category: { not: null }, deletedAt: null },
       }),
     ]);
 
@@ -144,7 +144,9 @@ export class CategoriesService {
   }
 
   private async countProductsForSlug(slug: string): Promise<number> {
-    return this.prisma.product.count({ where: { category: slug } });
+    return this.prisma.product.count({
+      where: { category: slug, deletedAt: null },
+    });
   }
 
   private toListItem(

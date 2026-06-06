@@ -164,6 +164,8 @@ model Product {
   estimatedDeliveryDays Int     @default(7)
   estimatedDelivery     String?
 
+  deletedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -174,6 +176,22 @@ model Product {
   @@index([artisanId])
   @@index([category])
   @@index([status])
+  @@index([deletedAt])
+}
+
+model AdminAuditLog {
+  id          Int      @id @default(autoincrement())
+  action      String
+  adminUserId Int?
+  targetType  String
+  targetId    Int
+  reason      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
 
 model WishlistItem {

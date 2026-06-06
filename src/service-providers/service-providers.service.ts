@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto, toTagArray } from '../common/product-mapper';
 
@@ -84,7 +85,7 @@ export class ServiceProvidersService {
 
   async listProductsByProvider(providerId: number, query: any) {
     const products = await this.prisma.product.findMany({
-      where: { providerId, status: 'approved' },
+      where: { providerId, status: 'approved', ...activeProductWhere },
       orderBy: { updatedAt: 'desc' },
       skip: (Math.max(1, Number(query?.page ?? 1)) - 1) * Math.max(1, Number(query?.pageSize ?? 20)),
       take: Math.max(1, Number(query?.pageSize ?? 20)),
@@ -93,7 +94,7 @@ export class ServiceProvidersService {
     const page = Math.max(1, Number(query?.page ?? 1));
     const pageSize = Math.max(1, Number(query?.pageSize ?? 20));
     const totalItems = await this.prisma.product.count({
-      where: { providerId, status: 'approved' },
+      where: { providerId, status: 'approved', ...activeProductWhere },
     });
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 

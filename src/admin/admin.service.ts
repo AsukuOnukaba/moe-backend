@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { activeProductWhere } from '../common/active-product';
 import { productToDto } from '../common/product-mapper';
+import { CartService } from '../customers/cart.service';
+import { PrismaService } from '../database/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrdersService } from '../orders/orders.service';
 
 @Injectable()
@@ -8,6 +11,8 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
+    private readonly notifications: NotificationsService,
+    private readonly cart: CartService,
   ) {}
 
   async dashboard() {
@@ -28,10 +33,10 @@ export class AdminService {
       this.prisma.artisanProfile.count({ where: { status: 'pending' } }),
       this.prisma.artisanProfile.count({ where: { status: 'approved' } }),
       this.prisma.artisanProfile.count({ where: { status: 'rejected' } }),
-      this.prisma.product.count(),
-      this.prisma.product.count({ where: { status: 'pending' } }),
-      this.prisma.product.count({ where: { status: 'approved' } }),
-      this.prisma.product.count({ where: { status: 'rejected' } }),
+      this.prisma.product.count({ where: activeProductWhere }),
+      this.prisma.product.count({ where: { status: 'pending', ...activeProductWhere } }),
+      this.prisma.product.count({ where: { status: 'approved', ...activeProductWhere } }),
+      this.prisma.product.count({ where: { status: 'rejected', ...activeProductWhere } }),
       this.prisma.order.count(),
     ]);
 
@@ -96,7 +101,7 @@ export class AdminService {
     }
 
     const [productCount, orderCount] = await Promise.all([
-      this.prisma.product.count({ where: { providerId: id } }),
+      this.prisma.product.count({ where: { providerId: id, ...activeProductWhere } }),
       this.prisma.order.count({ where: { providerId: id } }),
     ]);
 
@@ -179,7 +184,9 @@ export class AdminService {
 
   async listProducts(page: number, pageSize: number, status?: string) {
     const skip = (page - 1) * pageSize;
-    const where = status ? { status } : {};
+    const where = status
+      ? { status, ...activeProductWhere }
+      : { ...activeProductWhere };
     const [totalItems, items] = await Promise.all([
       this.prisma.product.count({ where }),
       this.prisma.product.findMany({
@@ -212,8 +219,8 @@ export class AdminService {
   }
 
   async getProduct(id: number) {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
+    const product = await this.prisma.product.findFirst({
+      where: { id, ...activeProductWhere },
       include: { provider: { include: { artisanProfile: true } } },
     });
     if (!product) {
@@ -231,6 +238,13 @@ export class AdminService {
       throw new BadRequestException({ message: 'Invalid status', code: 'VALIDATION_ERROR' });
     }
 
+    const existing = await this.prisma.product.findFirst({
+      where: { id, ...activeProductWhere },
+    });
+    if (!existing) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
     const updated = await this.prisma.product.update({
       where: { id },
       data: { status, rejectionReason: reason ?? null },
@@ -242,6 +256,80 @@ export class AdminService {
       rejectionReason: updated.rejectionReason,
       name: updated.name,
     };
+  }
+
+  async removeProduct(productId: number, adminUserId: number, reason?: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, ...activeProductWhere },
+    });
+    if (!product) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    const artisanUserId = product.providerId;
+
+    await this.prisma.$transaction([
+      this.prisma.wishlistItem.deleteMany({ where: { productId } }),
+      this.prisma.productReview.deleteMany({ where: { productId } }),
+      this.prisma.product.update({
+        where: { id: productId },
+        data: { deletedAt: new Date() },
+      }),
+      this.prisma.adminAuditLog.create({
+        data: {
+          action: 'product_removed',
+          adminUserId,
+          targetType: 'product',
+          targetId: productId,
+          reason: reason?.trim() || null,
+          metadata: {
+            productName: product.name,
+            providerId: product.providerId,
+          },
+        },
+      }),
+    ]);
+
+    this.cart.purgeProductFromAllCarts(productId);
+
+    if (artisanUserId) {
+      await this.notifications.notifyProductRemovedByAdmin({
+        artisanUserId,
+        productId,
+        productName: product.name,
+        reason,
+      });
+      await this.refreshArtisanRating(artisanUserId);
+    }
+  }
+
+  private async refreshArtisanRating(artisanId: number) {
+    const products = await this.prisma.product.findMany({
+      where: { providerId: artisanId, ...activeProductWhere },
+      select: { id: true },
+    });
+    const productIds = products.map((p) => p.id);
+    if (productIds.length === 0) {
+      await this.prisma.artisanProfile.update({
+        where: { userId: artisanId },
+        data: { rating: 0, reviewCount: 0 },
+      });
+      return;
+    }
+
+    const agg = await this.prisma.productReview.aggregate({
+      where: { productId: { in: productIds }, status: 'approved' },
+      _avg: { rating: true },
+      _count: { id: true },
+    });
+
+    await this.prisma.artisanProfile.update({
+      where: { userId: artisanId },
+      data: {
+        rating: agg._avg.rating ?? 0,
+        reviewCount: agg._count.id,
+      },
+    });
   }
 
   async listUsers(page: number, pageSize: number, role?: string) {

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
@@ -192,12 +193,12 @@ export class ArtisansService {
     const safePageSize = Math.max(1, Math.min(100, pageSize));
 
     const totalItems = await this.prisma.product.count({
-      where: { providerId: userId },
+      where: { providerId: userId, ...activeProductWhere },
     });
     const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
 
     const items = await this.prisma.product.findMany({
-      where: { providerId: userId },
+      where: { providerId: userId, ...activeProductWhere },
       orderBy: { updatedAt: 'desc' },
       skip: (safePage - 1) * safePageSize,
       take: safePageSize,
@@ -251,7 +252,7 @@ export class ArtisansService {
     const userId = this.requireArtisan(user);
 
     const existing = await this.prisma.product.findFirst({
-      where: { id: productId, providerId: userId },
+      where: { id: productId, providerId: userId, ...activeProductWhere },
     });
     if (!existing) {
       throw new NotFoundException({
@@ -317,7 +318,7 @@ export class ArtisansService {
     const userId = this.requireArtisan(user);
 
     const existing = await this.prisma.product.findFirst({
-      where: { id: productId, providerId: userId },
+      where: { id: productId, providerId: userId, ...activeProductWhere },
     });
     if (!existing) {
       throw new NotFoundException({

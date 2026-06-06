@@ -38,7 +38,9 @@ export class CustomizationOrdersService {
       return { message: 'Missing productId', code: 'VALIDATION_ERROR' };
     }
 
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+    });
     if (!product?.category) {
       throw new BadRequestException({ message: 'Product category required for customisation' });
     }

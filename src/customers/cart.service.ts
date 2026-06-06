@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { randomUUID } from 'crypto';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
@@ -67,7 +68,9 @@ export class CartService {
       throw new BadRequestException({ message: 'Missing productId', code: 'VALIDATION_ERROR' });
     }
 
-    const p = await this.prisma.product.findUnique({ where: { id: productId } });
+    const p = await this.prisma.product.findFirst({
+      where: { id: productId, ...activeProductWhere },
+    });
     if (!p) {
       throw new BadRequestException({ message: 'Product not found', code: 'RESOURCE_NOT_FOUND' });
     }
@@ -152,5 +155,18 @@ export class CartService {
     const cart = this.getCartForUser(user.sub);
     cart.splice(0, cart.length);
     return { success: true };
+  }
+
+  purgeProductFromAllCarts(productId: number) {
+    let removed = 0;
+    for (const cart of cartStore.values()) {
+      for (let i = cart.length - 1; i >= 0; i--) {
+        if (cart[i].productId === productId) {
+          cart.splice(i, 1);
+          removed++;
+        }
+      }
+    }
+    return removed;
   }
 }

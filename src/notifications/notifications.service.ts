@@ -3,7 +3,12 @@ import { Prisma } from '@prisma/client';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { PrismaService } from '../database/prisma.service';
 
-export type NotificationType = 'order_update' | 'message' | 'promotion' | 'system';
+export type NotificationType =
+  | 'order_update'
+  | 'message'
+  | 'promotion'
+  | 'system'
+  | 'product_removed_by_admin';
 
 export type CreateNotificationInput = {
   userId: number;
@@ -119,6 +124,25 @@ export class NotificationsService {
       body: `Order #${orderId} is now ${humanStatus}.`,
       link: `/orders/${orderId}`,
       idempotencyKey: `order:${orderId}:status:${newStatus.trim().toLowerCase()}`,
+    });
+  }
+
+  async notifyProductRemovedByAdmin(input: {
+    artisanUserId: number;
+    productId: number;
+    productName: string;
+    reason?: string;
+  }) {
+    const reasonSuffix = input.reason?.trim()
+      ? ` Reason: ${input.reason.trim()}`
+      : '';
+    return this.create({
+      userId: input.artisanUserId,
+      type: 'product_removed_by_admin',
+      title: 'Product removed',
+      body: `"${input.productName}" was permanently removed by an administrator.${reasonSuffix}`,
+      link: '/artisan/products',
+      idempotencyKey: `product:${input.productId}:removed_by_admin`,
     });
   }
 

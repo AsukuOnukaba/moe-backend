@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto } from '../common/product-mapper';
 import { getCustomisationTemplate } from './product-customisation.templates';
@@ -29,7 +30,7 @@ export class ProductsService {
     const priceMin = query?.priceMin !== undefined ? Number(query.priceMin) : undefined;
     const priceMax = query?.priceMax !== undefined ? Number(query.priceMax) : undefined;
 
-    const where: any = { status: APPROVED_STATUS };
+    const where: any = { status: APPROVED_STATUS, ...activeProductWhere };
     if (category) where.category = category;
     if (featured !== undefined) where.featured = featured;
 
@@ -94,7 +95,7 @@ export class ProductsService {
 
   async getProductById(id: number) {
     const p = await this.prisma.product.findFirst({
-      where: { id, status: APPROVED_STATUS },
+      where: { id, status: APPROVED_STATUS, ...activeProductWhere },
     });
     if (!p) return null;
     return productToDto(p);
@@ -105,7 +106,7 @@ export class ProductsService {
   }
 
   async getFilterMeta() {
-    const approved = { status: APPROVED_STATUS };
+    const approved = { status: APPROVED_STATUS, ...activeProductWhere };
     const [categories, tagRows, priceAgg, deliveryRows] = await Promise.all([
       this.prisma.product.findMany({
         where: approved,
@@ -161,13 +162,15 @@ export class ProductsService {
     const skip = (page - 1) * pageSize;
 
     const items = await this.prisma.product.findMany({
-      where: { status: APPROVED_STATUS },
+      where: { status: APPROVED_STATUS, ...activeProductWhere },
       orderBy: { updatedAt: 'desc' },
       skip,
       take: pageSize,
     });
 
-    const totalItems = items.length; // without filter metadata
+    const totalItems = await this.prisma.product.count({
+      where: { status: APPROVED_STATUS, ...activeProductWhere },
+    });
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
     return {
@@ -186,11 +189,13 @@ export class ProductsService {
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
     const skip = (page - 1) * pageSize;
 
-    const totalItems = await this.prisma.product.count({ where: { providerId } });
+    const totalItems = await this.prisma.product.count({
+      where: { providerId, status: APPROVED_STATUS, ...activeProductWhere },
+    });
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
     const items = await this.prisma.product.findMany({
-      where: { providerId },
+      where: { providerId, status: APPROVED_STATUS, ...activeProductWhere },
       orderBy: { updatedAt: 'desc' },
       skip,
       take: pageSize,

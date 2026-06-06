@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { productToDto } from '../common/product-mapper';
@@ -21,7 +22,9 @@ export class WishlistService {
       throw new BadRequestException({ message: 'Missing productId' });
     }
 
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, ...activeProductWhere },
+    });
     if (!product) {
       throw new BadRequestException({ message: 'Product not found' });
     }
@@ -86,7 +89,7 @@ export class WishlistService {
   async listFullProducts(user: AccessTokenPayload) {
     const userId = user.sub;
     const items = await this.prisma.wishlistItem.findMany({
-      where: { userId },
+      where: { userId, product: activeProductWhere },
       include: this.itemInclude(),
       orderBy: { addedAt: 'desc' },
     });

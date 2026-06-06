@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto, toTagArray } from '../common/product-mapper';
 
@@ -60,6 +61,7 @@ export class SearchService {
         ? this.prisma.product.findMany({
             where: {
               status: 'approved',
+              ...activeProductWhere,
               OR: [
                 { name: { contains: query, mode: 'insensitive' } },
                 { description: { contains: query, mode: 'insensitive' } },

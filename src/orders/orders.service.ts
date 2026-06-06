@@ -271,7 +271,9 @@ export class OrdersService {
       });
     }
 
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+    });
     if (!product) {
       throw new NotFoundException({
         message: 'Product not found',

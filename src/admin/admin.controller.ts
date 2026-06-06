@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
+import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../auth/guards/admin-role.guard';
 import { AdminService } from './admin.service';
@@ -63,6 +76,17 @@ export class AdminController {
     @Body() body: { status: 'approved' | 'rejected' | 'draft'; reason?: string },
   ) {
     return this.admin.patchProductStatus(Number(id), body.status, body.reason);
+  }
+
+  @Delete('products/:id')
+  @HttpCode(204)
+  async removeProduct(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Query('reason') reason?: string,
+  ) {
+    const user = req.user as AccessTokenPayload;
+    await this.admin.removeProduct(Number(id), user.sub, reason);
   }
 
   @Get('users')

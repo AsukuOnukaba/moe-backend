@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { formatReviewerName } from '../common/reviewer-name';
@@ -14,7 +15,7 @@ export class ProductReviewsService {
 
   private async getApprovedProduct(productId: number) {
     const product = await this.prisma.product.findFirst({
-      where: { id: productId, status: 'approved' },
+      where: { id: productId, status: 'approved', ...activeProductWhere },
     });
     if (!product) {
       throw new NotFoundException({
@@ -104,7 +105,7 @@ export class ProductReviewsService {
 
   async refreshArtisanRatingFromProductReviews(artisanId: number) {
     const products = await this.prisma.product.findMany({
-      where: { providerId: artisanId },
+      where: { providerId: artisanId, ...activeProductWhere },
       select: { id: true },
     });
     const productIds = products.map((p) => p.id);

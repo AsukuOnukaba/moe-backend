@@ -6,12 +6,18 @@ import {
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PaymentMethodsService } from '../payments/payment-methods.service';
+import {
+  CheckoutPaymentMethod,
+  CreateOrderDto,
+} from './dto/create-order.dto';
 import { validateCustomisationPayload } from '../products/product-customisation.templates';
 
 type ShippingAddress = {
   firstName: string;
   lastName: string;
   phone: string;
+  address: string;
   addressLine1: string;
   addressLine2?: string | null;
   city: string;
@@ -39,6 +45,7 @@ type Order = {
   currency: string;
   shippingAddress: ShippingAddress;
   paymentMethod: string;
+  paymentMethodId: string | null;
   paymentReference: string | null;
   paymentStatus: string;
   createdAt: string;
@@ -50,7 +57,67 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly paymentMethods: PaymentMethodsService,
   ) {}
+
+  private normalizeShippingAddress(
+    raw: CreateOrderDto['shippingAddress'],
+  ): ShippingAddress {
+    const addressLine1 = raw.address ?? raw.addressLine1 ?? '';
+    return {
+      firstName: raw.firstName.trim(),
+      lastName: raw.lastName.trim(),
+      phone: raw.phone.trim(),
+      address: addressLine1.trim(),
+      addressLine1: addressLine1.trim(),
+      addressLine2: raw.addressLine2?.trim() ?? null,
+      city: raw.city.trim(),
+      state: raw.state.trim(),
+      country: raw.country.trim(),
+      postalCode: raw.postalCode?.trim() ?? null,
+    };
+  }
+
+  private resolveShippingForResponse(dbOrder: {
+    shippingAddress: unknown;
+    shippingFirstName: string | null;
+    shippingLastName: string | null;
+    shippingPhone: string | null;
+    shippingAddressLine1: string | null;
+    shippingAddressLine2: string | null;
+    shippingCity: string | null;
+    shippingState: string | null;
+    shippingCountry: string | null;
+    shippingPostalCode: string | null;
+  }): ShippingAddress {
+    const stored = dbOrder.shippingAddress as ShippingAddress | null;
+    if (stored && typeof stored === 'object' && stored.firstName) {
+      return {
+        firstName: stored.firstName,
+        lastName: stored.lastName,
+        phone: stored.phone,
+        address: stored.address ?? stored.addressLine1 ?? '',
+        addressLine1: stored.addressLine1 ?? stored.address ?? '',
+        addressLine2: stored.addressLine2 ?? null,
+        city: stored.city,
+        state: stored.state,
+        country: stored.country,
+        postalCode: stored.postalCode ?? null,
+      };
+    }
+    return {
+      firstName: dbOrder.shippingFirstName || '',
+      lastName: dbOrder.shippingLastName || '',
+      phone: dbOrder.shippingPhone || '',
+      address: dbOrder.shippingAddressLine1 || '',
+      addressLine1: dbOrder.shippingAddressLine1 || '',
+      addressLine2: dbOrder.shippingAddressLine2,
+      city: dbOrder.shippingCity || '',
+      state: dbOrder.shippingState || '',
+      country: dbOrder.shippingCountry || '',
+      postalCode: dbOrder.shippingPostalCode,
+    };
+  }
 
   private toOrderResponse(dbOrder: {
     id: number;
@@ -70,8 +137,10 @@ export class OrdersService {
     customisationData: unknown;
     currency: string;
     paymentMethod: string;
+    paymentMethodId: string | null;
     paymentReference: string | null;
     paymentStatus: string;
+    shippingAddress: unknown;
     shippingFirstName: string | null;
     shippingLastName: string | null;
     shippingPhone: string | null;
@@ -101,18 +170,9 @@ export class OrdersService {
       rushOrder: dbOrder.rushOrder,
       customisationData: (dbOrder.customisationData as Record<string, unknown>) ?? null,
       currency: dbOrder.currency,
-      shippingAddress: {
-        firstName: dbOrder.shippingFirstName || '',
-        lastName: dbOrder.shippingLastName || '',
-        phone: dbOrder.shippingPhone || '',
-        addressLine1: dbOrder.shippingAddressLine1 || '',
-        addressLine2: dbOrder.shippingAddressLine2,
-        city: dbOrder.shippingCity || '',
-        state: dbOrder.shippingState || '',
-        country: dbOrder.shippingCountry || '',
-        postalCode: dbOrder.shippingPostalCode,
-      },
+      shippingAddress: this.resolveShippingForResponse(dbOrder),
       paymentMethod: dbOrder.paymentMethod,
+      paymentMethodId: dbOrder.paymentMethodId,
       paymentReference: dbOrder.paymentReference,
       paymentStatus: dbOrder.paymentStatus,
       createdAt: dbOrder.createdAt.toISOString(),
@@ -155,17 +215,69 @@ export class OrdersService {
     return this.toOrderResponse(dbOrder);
   }
 
-  async create(user: AccessTokenPayload, body: Record<string, unknown>) {
+  async create(user: AccessTokenPayload, body: CreateOrderDto) {
     const customerId = user.sub;
-    const items = Array.isArray(body?.items) ? body.items : [];
+    const items = body.items ?? [];
     if (items.length === 0) {
-      return { message: 'Missing items', code: 'VALIDATION_ERROR' };
+      throw new BadRequestException({
+        message: 'Missing items',
+        code: 'VALIDATION_ERROR',
+      });
     }
 
-    const first = items[0] as Record<string, unknown>;
+    const paymentMethod = body.paymentMethod;
+    const paymentMethodId = body.paymentMethodId?.trim() || null;
+    const gatewayToken = body.gatewayToken?.trim() || null;
+
+    if (paymentMethod === CheckoutPaymentMethod.CARD) {
+      if (!paymentMethodId && !gatewayToken) {
+        throw new BadRequestException({
+          message: 'paymentMethodId or gatewayToken is required for card payments',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+    }
+
+    if (body.saveCard && !paymentMethodId) {
+      if (!gatewayToken) {
+        throw new BadRequestException({
+          message: 'gatewayToken is required to save a new card',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      if (!body.cardBrand || !body.cardLast4 || !body.cardExpiry) {
+        throw new BadRequestException({
+          message: 'cardBrand, cardLast4, and cardExpiry are required when saveCard is true',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+    }
+
+    let resolvedPaymentMethodId = paymentMethodId;
+    let paymentReference: string | null = gatewayToken;
+
+    if (paymentMethod === CheckoutPaymentMethod.CARD && paymentMethodId) {
+      await this.paymentMethods.assertOwnedByUser(paymentMethodId, customerId);
+    }
+
+    const shippingAddress = this.normalizeShippingAddress(body.shippingAddress);
+
+    const first = items[0];
     const productId = Number(first.productId);
+    if (!Number.isFinite(productId)) {
+      throw new BadRequestException({
+        message: 'Invalid productId',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
-    if (!product) return { message: 'Product not found', code: 'RESOURCE_NOT_FOUND' };
+    if (!product) {
+      throw new NotFoundException({
+        message: 'Product not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
 
     const provider = product.providerId
       ? await this.prisma.user.findUnique({
@@ -196,9 +308,7 @@ export class OrdersService {
     const finalPrice = basePrice + rushSurcharge;
 
     const customisationData =
-      (first.customisation as Record<string, unknown>) ??
-      (first.customization as Record<string, unknown>) ??
-      null;
+      first.customisation ?? first.customization ?? null;
 
     if (customisationData && product.category) {
       const validation = validateCustomisationPayload(
@@ -220,8 +330,6 @@ export class OrdersService {
       }
     }
 
-    const shippingAddress = (body.shippingAddress ?? {}) as ShippingAddress;
-
     const dbOrder = await this.prisma.order.create({
       data: {
         customerId,
@@ -240,7 +348,8 @@ export class OrdersService {
         customisationData: customisationData
           ? (customisationData as object)
           : undefined,
-        currency: typeof body.currency === 'string' ? body.currency : product.currency ?? 'NGN',
+        currency: body.currency ?? product.currency ?? 'NGN',
+        shippingAddress: shippingAddress as object,
         shippingFirstName: shippingAddress.firstName,
         shippingLastName: shippingAddress.lastName,
         shippingPhone: shippingAddress.phone,
@@ -250,15 +359,40 @@ export class OrdersService {
         shippingState: shippingAddress.state,
         shippingCountry: shippingAddress.country,
         shippingPostalCode: shippingAddress.postalCode,
-        paymentMethod: typeof body.paymentMethod === 'string' ? body.paymentMethod : 'bank_transfer',
-        paymentReference: null,
-        paymentStatus: 'unpaid',
+        paymentMethod,
+        paymentMethodId: resolvedPaymentMethodId,
+        paymentReference,
+        paymentStatus: paymentMethod === CheckoutPaymentMethod.COD ? 'unpaid' : 'unpaid',
       },
     });
 
+    if (body.saveCard && gatewayToken && !paymentMethodId) {
+      const saved = await this.paymentMethods.createFromGateway({
+        userId: customerId,
+        gatewayToken,
+        brand: body.cardBrand!,
+        last4: body.cardLast4!,
+        expiry: body.cardExpiry!,
+        cardholderName: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
+      });
+      resolvedPaymentMethodId = saved.id;
+      await this.prisma.order.update({
+        where: { id: dbOrder.id },
+        data: { paymentMethodId: saved.id },
+      });
+    }
+
     await this.notifications.notifyOrderCreated(customerId, dbOrder.id);
 
-    return this.toOrderResponse(dbOrder);
+    const paymentMethods = await this.paymentMethods.listForCheckout(customerId);
+
+    return {
+      ...this.toOrderResponse({
+        ...dbOrder,
+        paymentMethodId: resolvedPaymentMethodId,
+      }),
+      paymentMethods,
+    };
   }
 
   async patch(user: AccessTokenPayload, orderId: string, body: Record<string, unknown>) {

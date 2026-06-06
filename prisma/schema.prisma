@@ -230,9 +230,11 @@ model Order {
   customisationData    Json?
   currency             String  @default("NGN")
   paymentMethod        String  @default("bank_transfer")
+  paymentMethodId      String?
   paymentReference     String?
   paymentStatus        String  @default("unpaid")
 
+  shippingAddress      Json?
   shippingFirstName    String?
   shippingLastName     String?
   shippingPhone        String?

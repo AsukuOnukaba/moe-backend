@@ -2,6 +2,7 @@ import { Body, Controller, Get, Patch, Post, Query, Param, Req, UseGuards } from
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
+import { CreateOrderDto } from './dto/create-order.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
@@ -24,7 +25,7 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Req() req: Request, @Body() body: any) {
+  create(@Req() req: Request, @Body() body: CreateOrderDto) {
     const user = req.user as AccessTokenPayload;
     return this.orders.create(user, body);
   }

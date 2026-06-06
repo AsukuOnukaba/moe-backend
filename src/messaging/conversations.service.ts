@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 
@@ -6,11 +6,13 @@ import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 export class ConversationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private computeUnreadForCustomer(
+  private computeUnreadCount(
     messages: { senderType: string; readAt: Date | null }[],
+    viewerRole: 'customer' | 'artisan',
   ) {
+    const unreadSenderType = viewerRole === 'customer' ? 'provider' : 'customer';
     return messages.filter(
-      (m) => m.senderType === 'provider' && m.readAt === null,
+      (m) => m.senderType === unreadSenderType && m.readAt === null,
     ).length;
   }
 
@@ -21,6 +23,7 @@ export class ConversationsService {
       providerId: number;
       lastMessage: string | null;
       lastMessageTime: Date | null;
+      customer: { name: string };
       provider: { brandName: string | null; user: { name: string } };
     },
     unreadCount: number,
@@ -31,6 +34,7 @@ export class ConversationsService {
       id: row.id,
       customerId: row.customerId,
       providerId: row.providerId,
+      customerName: row.customer.name ?? '',
       providerName,
       lastMessage: row.lastMessage ?? '',
       lastMessageTime: (row.lastMessageTime ?? new Date()).toISOString(),
@@ -60,6 +64,7 @@ export class ConversationsService {
 
   private conversationInclude() {
     return {
+      customer: { select: { name: true } },
       provider: {
         include: { user: { select: { name: true } } },
       },
@@ -67,7 +72,20 @@ export class ConversationsService {
     };
   }
 
-  async list(customer: AccessTokenPayload) {
+  async list(user: AccessTokenPayload) {
+    if (user.role === 'artisan') {
+      return this.listForArtisan(user);
+    }
+    if (user.role !== 'customer') {
+      throw new ForbiddenException({
+        message: 'Forbidden',
+        code: 'FORBIDDEN',
+      });
+    }
+    return this.listForCustomer(user);
+  }
+
+  private async listForCustomer(customer: AccessTokenPayload) {
     const rows = await this.prisma.conversation.findMany({
       where: { customerId: customer.sub },
       include: this.conversationInclude(),
@@ -77,7 +95,22 @@ export class ConversationsService {
     return rows.map((row) =>
       this.toConversationDto(
         row,
-        this.computeUnreadForCustomer(row.messages),
+        this.computeUnreadCount(row.messages, 'customer'),
+      ),
+    );
+  }
+
+  private async listForArtisan(artisan: AccessTokenPayload) {
+    const rows = await this.prisma.conversation.findMany({
+      where: { providerId: artisan.sub },
+      include: this.conversationInclude(),
+      orderBy: { lastMessageTime: 'desc' },
+    });
+
+    return rows.map((row) =>
+      this.toConversationDto(
+        row,
+        this.computeUnreadCount(row.messages, 'artisan'),
       ),
     );
   }
@@ -140,16 +173,21 @@ export class ConversationsService {
 
     return this.toConversationDto(
       conversation,
-      this.computeUnreadForCustomer(conversation.messages),
+      this.computeUnreadCount(conversation.messages, 'customer'),
     );
   }
 
-  private async getConversationForCustomer(
-    customerId: number,
+  private async getConversationForUser(
+    user: AccessTokenPayload,
     conversationId: number,
   ) {
+    const where =
+      user.role === 'artisan'
+        ? { id: conversationId, providerId: user.sub }
+        : { id: conversationId, customerId: user.sub };
+
     const row = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, customerId },
+      where,
       include: this.conversationInclude(),
     });
     if (!row) {
@@ -161,23 +199,17 @@ export class ConversationsService {
     return row;
   }
 
-  async listMessages(customer: AccessTokenPayload, conversationId: number) {
-    const row = await this.getConversationForCustomer(
-      customer.sub,
-      conversationId,
-    );
+  async listMessages(user: AccessTokenPayload, conversationId: number) {
+    const row = await this.getConversationForUser(user, conversationId);
     return row.messages.map((m) => this.toMessageDto(m));
   }
 
   async sendMessage(
-    customer: AccessTokenPayload,
+    user: AccessTokenPayload,
     conversationId: number,
     body: { content?: string },
   ) {
-    const row = await this.getConversationForCustomer(
-      customer.sub,
-      conversationId,
-    );
+    const row = await this.getConversationForUser(user, conversationId);
 
     const content = typeof body?.content === 'string' ? body.content.trim() : '';
     if (!content) {
@@ -185,12 +217,12 @@ export class ConversationsService {
     }
 
     const senderType =
-      row.customerId === customer.sub ? 'customer' : 'provider';
+      row.customerId === user.sub ? 'customer' : 'provider';
 
     const message = await this.prisma.message.create({
       data: {
         conversationId,
-        senderId: customer.sub,
+        senderId: user.sub,
         senderType,
         content,
       },
@@ -204,17 +236,17 @@ export class ConversationsService {
     return this.toMessageDto(message);
   }
 
-  async markRead(customer: AccessTokenPayload, conversationId: number) {
-    const row = await this.getConversationForCustomer(
-      customer.sub,
-      conversationId,
-    );
+  async markRead(user: AccessTokenPayload, conversationId: number) {
+    const row = await this.getConversationForUser(user, conversationId);
+
+    const unreadSenderType =
+      user.role === 'artisan' ? 'customer' : 'provider';
 
     const now = new Date();
     await this.prisma.message.updateMany({
       where: {
         conversationId,
-        senderType: 'provider',
+        senderType: unreadSenderType,
         readAt: null,
       },
       data: { readAt: now },

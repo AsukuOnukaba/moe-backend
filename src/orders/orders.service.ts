@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { PrismaService } from '../database/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { validateCustomisationPayload } from '../products/product-customisation.templates';
 
 type ShippingAddress = {
@@ -46,7 +47,10 @@ type Order = {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private toOrderResponse(dbOrder: {
     id: number;
@@ -251,6 +255,8 @@ export class OrdersService {
         paymentStatus: 'unpaid',
       },
     });
+
+    await this.notifications.notifyOrderCreated(customerId, dbOrder.id);
 
     return this.toOrderResponse(dbOrder);
   }

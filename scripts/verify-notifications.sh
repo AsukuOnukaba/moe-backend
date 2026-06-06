@@ -74,7 +74,7 @@ echo ""
 echo "Notes:"
 echo "  • Login returns { token, refreshToken, user } — use .token (not .accessToken)."
 echo "  • List response is paginated: { data: [...], pagination: {...} }."
-echo "  • Notifications are in-memory only; server restart clears them."
-echo "  • No order/message handlers create notifications yet — list will stay empty until that is wired."
+echo "  • Notifications are persisted in PostgreSQL (Notification table)."
+echo "  • Order created + new message emit in-app rows automatically."
 
 [[ "$fail" -eq 0 ]]

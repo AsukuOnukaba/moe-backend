@@ -1,10 +1,14 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private computeUnreadCount(
     messages: { senderType: string; readAt: Date | null }[],
@@ -70,6 +74,35 @@ export class ConversationsService {
       },
       messages: { orderBy: { sentAt: 'asc' as const } },
     };
+  }
+
+  private async emitMessageNotification(
+    conversation: {
+      id: number;
+      customerId: number;
+      providerId: number;
+      customer: { name: string };
+      provider: { brandName: string | null; user: { name: string } };
+    },
+    message: { id: number; senderType: string; content: string },
+  ) {
+    const isCustomerSender = message.senderType === 'customer';
+    const recipientId = isCustomerSender
+      ? conversation.providerId
+      : conversation.customerId;
+    const senderName = isCustomerSender
+      ? conversation.customer.name
+      : (conversation.provider.brandName ??
+        conversation.provider.user.name ??
+        '');
+
+    await this.notifications.notifyNewMessage({
+      recipientId,
+      senderName,
+      content: message.content,
+      conversationId: conversation.id,
+      messageId: message.id,
+    });
   }
 
   async list(user: AccessTokenPayload) {
@@ -153,7 +186,7 @@ export class ConversationsService {
     }
 
     if (initialMessage) {
-      await this.prisma.message.create({
+      const createdMessage = await this.prisma.message.create({
         data: {
           conversationId: conversation.id,
           senderId: customerId,
@@ -169,6 +202,7 @@ export class ConversationsService {
         },
         include: this.conversationInclude(),
       });
+      await this.emitMessageNotification(conversation, createdMessage);
     }
 
     return this.toConversationDto(
@@ -232,6 +266,8 @@ export class ConversationsService {
       where: { id: conversationId },
       data: { lastMessage: content, lastMessageTime: new Date() },
     });
+
+    await this.emitMessageNotification(row, message);
 
     return this.toMessageDto(message);
   }

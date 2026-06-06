@@ -31,6 +31,7 @@ model User {
   sentMessages          Message[]
   artisanReviews        ArtisanReview[] @relation("CustomerReviews")
   productReviews        ProductReview[]
+  notifications         Notification[]
 }
 
 model Address {
@@ -325,4 +326,22 @@ model Message {
 
   @@index([conversationId])
   @@index([senderId])
+}
+
+model Notification {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  type           String
+  title          String
+  body           String
+  read           Boolean  @default(false)
+  link           String?
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }

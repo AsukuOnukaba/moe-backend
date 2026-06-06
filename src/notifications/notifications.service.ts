@@ -140,6 +140,23 @@ export class NotificationsService {
     });
   }
 
+  conversationMessageLink(conversationId: number) {
+    return `/messages?c=${conversationId}`;
+  }
+
+  async deleteMessageNotificationsForConversations(conversationIds: number[]) {
+    if (conversationIds.length === 0) return 0;
+
+    const links = conversationIds.map((id) => this.conversationMessageLink(id));
+    const result = await this.prisma.notification.deleteMany({
+      where: {
+        type: 'message',
+        link: { in: links },
+      },
+    });
+    return result.count;
+  }
+
   async list(user: AccessTokenPayload, query: Record<string, unknown>) {
     const page = Math.max(1, Number(query?.page ?? 1));
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));

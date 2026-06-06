@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -8,6 +9,7 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly config: ConfigService,
   ) {}
 
   private computeUnreadCount(
@@ -294,5 +296,89 @@ export class ConversationsService {
     });
 
     return { success: true };
+  }
+
+  private participantWhere(user: AccessTokenPayload) {
+    if (user.role === 'artisan') {
+      return { providerId: user.sub };
+    }
+    if (user.role === 'customer') {
+      return { customerId: user.sub };
+    }
+    return null;
+  }
+
+  private isParticipant(
+    conversation: { customerId: number; providerId: number },
+    user: AccessTokenPayload,
+  ) {
+    return (
+      conversation.customerId === user.sub || conversation.providerId === user.sub
+    );
+  }
+
+  private bulkDeleteAllowed() {
+    const flag = this.config.get<string>('ALLOW_CONVERSATION_BULK_DELETE');
+    const nodeEnv = this.config.get<string>('NODE_ENV') ?? 'development';
+    return flag === 'true' || nodeEnv !== 'production';
+  }
+
+  async deleteOne(user: AccessTokenPayload, conversationId: number) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    if (!this.isParticipant(conversation, user)) {
+      throw new ForbiddenException({
+        message: 'Forbidden',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    await this.notifications.deleteMessageNotificationsForConversations([
+      conversationId,
+    ]);
+    await this.prisma.conversation.delete({ where: { id: conversationId } });
+  }
+
+  async deleteAllForUser(user: AccessTokenPayload) {
+    if (!this.bulkDeleteAllowed()) {
+      throw new ForbiddenException({
+        message: 'Bulk conversation delete is disabled',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const participantFilter = this.participantWhere(user);
+    if (!participantFilter) {
+      throw new ForbiddenException({
+        message: 'Forbidden',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const conversations = await this.prisma.conversation.findMany({
+      where: participantFilter,
+      select: { id: true },
+    });
+
+    if (conversations.length === 0) {
+      return { deleted: 0 };
+    }
+
+    const ids = conversations.map((c) => c.id);
+    await this.notifications.deleteMessageNotificationsForConversations(ids);
+    const result = await this.prisma.conversation.deleteMany({
+      where: { id: { in: ids } },
+    });
+
+    return { deleted: result.count };
   }
 }

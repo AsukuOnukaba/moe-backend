@@ -65,6 +65,10 @@ class EnvVars {
   @IsString()
   GOOGLE_SUCCESS_REDIRECT?: string;
 
+  @IsOptional()
+  @IsString()
+  ALLOW_CONVERSATION_BULK_DELETE?: string;
+
 }
 
 export function validateEnv(config: Record<string, unknown>) {

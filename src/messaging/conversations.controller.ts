@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
@@ -13,6 +24,13 @@ export class ConversationsController {
   list(@Req() req: Request) {
     const user = req.user as AccessTokenPayload;
     return this.conversations.list(user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete()
+  deleteAll(@Req() req: Request) {
+    const user = req.user as AccessTokenPayload;
+    return this.conversations.deleteAllForUser(user);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -42,5 +60,12 @@ export class ConversationsController {
     const user = req.user as AccessTokenPayload;
     return this.conversations.markRead(user, Number(id));
   }
-}
 
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  @HttpCode(204)
+  async deleteOne(@Req() req: Request, @Param('id') id: string) {
+    const user = req.user as AccessTokenPayload;
+    await this.conversations.deleteOne(user, Number(id));
+  }
+}

@@ -23,6 +23,7 @@ import { SupportModule } from './support/support.module';
 import { CustomizationModule } from './customization/customization.module';
 import { AdminModule } from './admin/admin.module';
 import { MetaModule } from './meta/meta.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { MetaModule } from './meta/meta.module';
     CustomizationModule,
     AdminModule,
     MetaModule,
+    CategoriesModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

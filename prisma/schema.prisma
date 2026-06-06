@@ -347,3 +347,14 @@ model Notification {
   @@index([userId, read])
   @@index([userId, createdAt])
 }
+
+model Category {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  label     String
+  icon      String?
+  isSeed    Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

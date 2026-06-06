@@ -279,11 +279,39 @@ export class OrdersService {
       },
     });
 
+    await this.emitOrderTransitionNotifications(dbOrder, updated);
+
     return this.toOrderResponse(updated);
   }
 
   private formatOrderNumber(id: number) {
     return `ORD-${String(id).padStart(3, '0')}`;
+  }
+
+  private static readonly NOTIFY_PAYMENT_STATUSES = new Set(['paid', 'refunded']);
+
+  private async emitOrderTransitionNotifications(
+    before: { id: number; customerId: number; status: string; paymentStatus: string },
+    after: { id: number; customerId: number; status: string; paymentStatus: string },
+  ) {
+    if (after.status !== before.status) {
+      await this.notifications.notifyOrderStatusChange(
+        after.customerId,
+        after.id,
+        after.status,
+      );
+    }
+
+    if (
+      after.paymentStatus !== before.paymentStatus &&
+      OrdersService.NOTIFY_PAYMENT_STATUSES.has(after.paymentStatus)
+    ) {
+      await this.notifications.notifyOrderStatusChange(
+        after.customerId,
+        after.id,
+        after.paymentStatus,
+      );
+    }
   }
 
   private async loadCustomerMap(customerIds: number[]) {
@@ -483,6 +511,8 @@ export class OrdersService {
         ...(typeof body?.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
       },
     });
+
+    await this.emitOrderTransitionNotifications(dbOrder, updated);
 
     const customer = await this.prisma.user.findUnique({
       where: { id: updated.customerId },

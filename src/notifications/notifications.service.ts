@@ -87,6 +87,41 @@ export class NotificationsService {
     });
   }
 
+  humanOrderStatus(status: string) {
+    const normalized = status.trim().toLowerCase();
+    const labels: Record<string, string> = {
+      pending: 'pending',
+      confirmed: 'confirmed',
+      awaiting_payment: 'awaiting payment',
+      in_progress: 'in production',
+      in_production: 'in production',
+      approved: 'approved',
+      shipped: 'shipped',
+      delivered: 'delivered',
+      cancelled: 'cancelled',
+      rejected: 'rejected',
+      paid: 'paid',
+      refunded: 'refunded',
+    };
+    return labels[normalized] ?? normalized.replace(/_/g, ' ');
+  }
+
+  async notifyOrderStatusChange(
+    customerId: number,
+    orderId: number,
+    newStatus: string,
+  ) {
+    const humanStatus = this.humanOrderStatus(newStatus);
+    return this.create({
+      userId: customerId,
+      type: 'order_update',
+      title: `Order ${humanStatus}`,
+      body: `Order #${orderId} is now ${humanStatus}.`,
+      link: `/orders/${orderId}`,
+      idempotencyKey: `order:${orderId}:status:${newStatus.trim().toLowerCase()}`,
+    });
+  }
+
   async notifyNewMessage(input: {
     recipientId: number;
     senderName: string;

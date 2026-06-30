@@ -569,4 +569,22 @@ export class ConversationsService {
       messages: row.messages.map((m) => this.toMessageDto(m)),
     };
   }
+
+  async adminDelete(conversationId: number) {
+    const row = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    await this.notifications.deleteMessageNotificationsForConversations([
+      conversationId,
+    ]);
+    await this.prisma.conversation.delete({ where: { id: conversationId } });
+    return { success: true };
+  }
 }

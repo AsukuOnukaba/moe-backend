@@ -147,6 +147,24 @@ export class AdminController {
     return this.admin.patchUserStatus(Number(id), body.status);
   }
 
+  @Patch('users/:id')
+  patchUser(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      email?: string;
+      phone?: string;
+      businessName?: string;
+      category?: string;
+      city?: string;
+      state?: string;
+      about?: string;
+    },
+  ) {
+    return this.admin.patchUser(Number(id), body);
+  }
+
   @Delete('users/:id')
   @HttpCode(200)
   deleteUser(@Req() req: Request, @Param('id') id: string) {
@@ -188,6 +206,12 @@ export class AdminController {
     @Body() body: { status: 'resolved' | 'needs_follow_up' | 'replied' | 'unread' },
   ) {
     return this.conversations.updateStatus(Number(id), body.status);
+  }
+
+  @Delete('conversations/:id')
+  @HttpCode(200)
+  deleteConversation(@Param('id') id: string) {
+    return this.conversations.adminDelete(Number(id));
   }
 
   @Post('categories')

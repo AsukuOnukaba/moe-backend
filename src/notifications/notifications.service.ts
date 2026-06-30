@@ -153,19 +153,25 @@ export class NotificationsService {
     conversationId: number;
     messageId: number;
   }) {
+    const conversationId = Number(input.conversationId);
+    const link =
+      Number.isFinite(conversationId) && conversationId > 0
+        ? `/marketplace/messages/${conversationId}`
+        : '/marketplace/messages';
+
     return this.create({
       userId: input.recipientId,
       type: 'message',
       title: `New message from ${input.senderName}`,
       body: input.content,
-      link: `/messages?c=${input.conversationId}`,
+      link,
       idempotencyKey: `message:${input.messageId}`,
       bodyMaxLength: 80,
     });
   }
 
   conversationMessageLink(conversationId: number) {
-    return `/messages?c=${conversationId}`;
+    return `/marketplace/messages/${conversationId}`;
   }
 
   async deleteMessageNotificationsForConversations(conversationIds: number[]) {
@@ -186,7 +192,14 @@ export class NotificationsService {
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
     const skip = (page - 1) * pageSize;
 
-    const where = { userId: user.sub };
+    const unreadOnly =
+      query?.unread === true ||
+      query?.unread === 'true' ||
+      query?.unread === '1';
+    const where = {
+      userId: user.sub,
+      ...(unreadOnly ? { read: false } : {}),
+    };
     const [totalItems, rows] = await Promise.all([
       this.prisma.notification.count({ where }),
       this.prisma.notification.findMany({

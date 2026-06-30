@@ -403,10 +403,79 @@ export class AdminService {
             category: artisanProfile.category,
             city: artisanProfile.city,
             state: artisanProfile.state,
+            about: artisanProfile.about,
           }
         : null,
       customerProfile: addresses.length > 0 ? { addresses } : null,
     };
+  }
+
+  async patchUser(
+    id: number,
+    body: {
+      name?: string;
+      email?: string;
+      phone?: string;
+      businessName?: string;
+      category?: string;
+      city?: string;
+      state?: string;
+      about?: string;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { artisanProfile: true },
+    });
+    if (!user) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    const userData: Record<string, string | null> = {};
+    if (body.name !== undefined) userData.name = body.name.trim();
+    if (body.phone !== undefined) userData.phone = body.phone.trim() || null;
+    if (body.email !== undefined) {
+      const email = body.email.toLowerCase().trim();
+      if (email !== user.email) {
+        const taken = await this.prisma.user.findUnique({ where: { email } });
+        if (taken && taken.id !== id) {
+          throw new BadRequestException({
+            message: 'Email is already in use.',
+            code: 'VALIDATION_ERROR',
+          });
+        }
+        userData.email = email;
+      }
+    }
+
+    if (Object.keys(userData).length > 0) {
+      await this.prisma.user.update({ where: { id }, data: userData });
+    }
+
+    const artisanData: Record<string, string | null> = {};
+    if (body.businessName !== undefined) {
+      artisanData.businessName = body.businessName.trim() || null;
+      artisanData.brandName = body.businessName.trim() || null;
+    }
+    if (body.category !== undefined) artisanData.category = body.category.trim() || null;
+    if (body.city !== undefined) artisanData.city = body.city.trim() || null;
+    if (body.state !== undefined) artisanData.state = body.state.trim() || null;
+    if (body.about !== undefined) artisanData.about = body.about.trim() || null;
+
+    if (Object.keys(artisanData).length > 0) {
+      if (!user.artisanProfile) {
+        throw new BadRequestException({
+          message: 'User has no artisan profile',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      await this.prisma.artisanProfile.update({
+        where: { userId: id },
+        data: artisanData,
+      });
+    }
+
+    return this.getUser(id);
   }
 
   async createUser(body: {

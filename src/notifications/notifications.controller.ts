@@ -16,17 +16,17 @@ export class NotificationsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch(':id/read')
-  markOne(@Req() req: Request, @Param('id') id: string, @Body() _body: any) {
-    const user = req.user as AccessTokenPayload;
-    return this.notifications.markRead(user, Number(id));
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Patch('read-all')
   markAll(@Req() req: Request) {
     const user = req.user as AccessTokenPayload;
     return this.notifications.markAllRead(user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/read')
+  markOne(@Req() req: Request, @Param('id') id: string, @Body() _body: any) {
+    const user = req.user as AccessTokenPayload;
+    return this.notifications.markRead(user, Number(id));
   }
 }
 

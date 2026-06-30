@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { PrismaService } from '../database/prisma.service';
@@ -222,7 +222,12 @@ export class NotificationsService {
     const row = await this.prisma.notification.findFirst({
       where: { id, userId: user.sub },
     });
-    if (!row) return { message: 'Not found', code: 'RESOURCE_NOT_FOUND' };
+    if (!row) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
 
     const updated = await this.prisma.notification.update({
       where: { id: row.id },

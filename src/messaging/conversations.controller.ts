@@ -62,6 +62,18 @@ export class ConversationsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch(':id/artisan-note')
+  updateArtisanNote(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { note?: string },
+  ) {
+    const user = req.user as AccessTokenPayload;
+    const note = typeof body?.note === 'string' ? body.note : '';
+    return this.conversations.updateArtisanNote(user, Number(id), note);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   @HttpCode(204)
   async deleteOne(@Req() req: Request, @Param('id') id: string) {

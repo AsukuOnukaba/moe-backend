@@ -7,6 +7,7 @@ import { ConversationsService } from './conversations.service';
   imports: [NotificationsModule],
   controllers: [ConversationsController],
   providers: [ConversationsService],
+  exports: [ConversationsService],
 })
 export class MessagingModule {}
 

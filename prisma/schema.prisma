@@ -15,6 +15,7 @@ model User {
   phone                     String?
   avatarUrl                 String?
   googleId                  String?   @unique
+  status                    String    @default("active")
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
@@ -320,6 +321,8 @@ model Conversation {
   providerId      Int
   lastMessage     String?
   lastMessageTime DateTime?
+  artisanNote     String?
+  status          String    @default("unread")
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -337,6 +340,7 @@ model Message {
   conversationId Int
   senderId       Int
   senderType     String
+  senderRole     String    @default("customer")
   content        String
   sentAt         DateTime  @default(now())
   readAt         DateTime?

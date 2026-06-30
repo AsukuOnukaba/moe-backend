@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -195,6 +196,13 @@ export class AuthService {
       throw authError('Invalid credentials', 'AUTH_INVALID_CREDENTIALS');
     }
 
+    if (user.status === 'suspended') {
+      throw new ForbiddenException({
+        message: 'Your account has been suspended. Contact support.',
+        code: 'FORBIDDEN',
+      });
+    }
+
     const role = await this.resolvePrimaryRole(user.id);
     const tokens = await this.issueTokens(user, role);
     return {
@@ -234,6 +242,13 @@ export class AuthService {
           googleId: profile.googleId,
           avatarUrl: user.avatarUrl ?? profile.avatarUrl,
         },
+      });
+    }
+
+    if (user.status === 'suspended') {
+      throw new ForbiddenException({
+        message: 'Your account has been suspended. Contact support.',
+        code: 'FORBIDDEN',
       });
     }
 

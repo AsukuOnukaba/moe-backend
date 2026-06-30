@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import type { Category } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
@@ -47,9 +48,12 @@ export class CategoriesService {
       productCounts.map((row) => [row.category!, row._count.id]),
     );
 
-    return categories.map((category) =>
-      this.toListItem(category, countBySlug.get(category.slug) ?? 0),
-    );
+    return categories.map((category) => ({
+      ...this.toListItem(category, countBySlug.get(category.slug) ?? 0),
+      value: category.slug,
+      iconKey: category.icon,
+      order: category.sortOrder,
+    }));
   }
 
   async create(dto: CreateCategoryDto): Promise<CategoryRecord> {
@@ -133,9 +137,10 @@ export class CategoriesService {
     }
 
     const productCount = await this.countProductsForSlug(category.slug);
-    if (productCount > 0) {
-      throw new ConflictException({
-        message: 'Move or delete products in this category first',
+    const artisanCount = await this.countArtisansForSlug(category.slug);
+    if (productCount > 0 || artisanCount > 0) {
+      throw new BadRequestException({
+        message: 'Category has active products or artisans and cannot be deleted.',
         code: 'VALIDATION_ERROR',
       });
     }
@@ -146,6 +151,12 @@ export class CategoriesService {
   private async countProductsForSlug(slug: string): Promise<number> {
     return this.prisma.product.count({
       where: { category: slug, deletedAt: null },
+    });
+  }
+
+  private async countArtisansForSlug(slug: string): Promise<number> {
+    return this.prisma.artisanProfile.count({
+      where: { category: slug, status: 'approved' },
     });
   }
 

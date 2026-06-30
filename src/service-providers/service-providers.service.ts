@@ -37,11 +37,26 @@ export class ServiceProvidersService {
     let providers = artisans
       .map((ur) => ur.user)
       .filter((u: any) => u.artisanProfile?.status === 'approved')
-      .map((u: any) => this.userToProvider(u, u.artisanProfile));
+      .map((u: any) => this.userToProvider(u, u.artisanProfile, false));
 
     if (category) {
+      const cat = category.toLowerCase();
+      const providerIdsWithProducts = await this.prisma.product.findMany({
+        where: {
+          category: cat,
+          status: 'approved',
+          deletedAt: null,
+        },
+        select: { providerId: true },
+        distinct: ['providerId'],
+      });
+      const productProviderIds = new Set(
+        providerIdsWithProducts.map((p) => p.providerId),
+      );
       providers = providers.filter(
-        (p) => p.category?.toLowerCase() === category.toLowerCase(),
+        (p) =>
+          p.category?.toLowerCase() === cat ||
+          productProviderIds.has(p.id),
       );
     }
     if (location) {
@@ -80,7 +95,7 @@ export class ServiceProvidersService {
     if (!user || !user.artisanProfile || user.artisanProfile.status !== 'approved') {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
-    return this.userToProvider(user, user.artisanProfile);
+    return this.userToProvider(user, user.artisanProfile, false);
   }
 
   async listProductsByProvider(providerId: number, query: any) {
@@ -111,7 +126,7 @@ export class ServiceProvidersService {
     return providers;
   }
 
-  private userToProvider(user: any, ap: any) {
+  private userToProvider(user: any, ap: any, includePhone = false) {
     return {
       id: user.id,
       providerId: user.id,
@@ -125,7 +140,7 @@ export class ServiceProvidersService {
       state: ap.state ?? null,
       country: ap.country ?? null,
       address: ap.address ?? null,
-      phone: user.phone ?? null,
+      ...(includePhone ? { phone: user.phone ?? null } : {}),
       email: user.email,
       rating: ap.rating ?? 0,
       reviewCount: ap.reviewCount ?? 0,

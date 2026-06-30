@@ -1,4 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { activeProductWhere } from '../common/active-product';
 import { productToDto } from '../common/product-mapper';
 import { CartService } from '../customers/cart.service';
@@ -332,12 +334,16 @@ export class AdminService {
     });
   }
 
-  async listUsers(page: number, pageSize: number, role?: string) {
+  async listUsers(page: number, pageSize: number, role?: string, status?: string) {
     const skip = (page - 1) * pageSize;
 
-    const where = role
-      ? { roles: { some: { role: { name: role } } } }
-      : undefined;
+    const where: Record<string, unknown> = {};
+    if (role) {
+      where.roles = { some: { role: { name: role } } };
+    }
+    if (status === 'suspended') {
+      where.status = 'suspended';
+    }
 
     const [totalItems, items] = await Promise.all([
       this.prisma.user.count({ where }),
@@ -357,6 +363,7 @@ export class AdminService {
         email: u.email,
         roles: u.roles.map((r) => r.role.name),
         artisanStatus: u.artisanProfile?.status ?? null,
+        status: u.status ?? 'active',
         createdAt: u.createdAt.toISOString(),
       })),
       pagination: {
@@ -400,6 +407,152 @@ export class AdminService {
         : null,
       customerProfile: addresses.length > 0 ? { addresses } : null,
     };
+  }
+
+  async createUser(body: {
+    name: string;
+    email: string;
+    phone?: string;
+    role: 'customer' | 'artisan' | 'admin';
+    temporaryPassword: string;
+    businessName?: string;
+    category?: string;
+  }) {
+    const email = body.email.toLowerCase().trim();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      throw new BadRequestException({
+        message: 'Email already in use',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    if (body.role === 'artisan' && !body.businessName?.trim()) {
+      throw new BadRequestException({
+        message: 'businessName is required for artisan role',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(body.temporaryPassword, 12);
+    const user = await this.prisma.user.create({
+      data: {
+        name: body.name.trim(),
+        email,
+        phone: body.phone?.trim() || null,
+        passwordHash,
+        status: 'active',
+      },
+    });
+
+    await this.prisma.role.upsert({
+      where: { name: body.role },
+      update: {},
+      create: { name: body.role },
+    });
+    const roleRow = await this.prisma.role.findUnique({
+      where: { name: body.role },
+    });
+    if (roleRow) {
+      await this.prisma.userRole.create({
+        data: { userId: user.id, roleId: roleRow.id },
+      });
+    }
+
+    if (body.role === 'artisan') {
+      await this.prisma.artisanProfile.create({
+        data: {
+          userId: user.id,
+          brandName: body.businessName!.trim(),
+          businessName: body.businessName!.trim(),
+          category: body.category?.trim() || null,
+          status: 'pending',
+        },
+      });
+    }
+
+    const { passwordHash: _, ...safe } = user;
+    return {
+      ...safe,
+      createdAt: safe.createdAt.toISOString(),
+      updatedAt: safe.updatedAt.toISOString(),
+      roles: [body.role],
+    };
+  }
+
+  async resetUserPassword(id: number) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let temporaryPassword = '';
+    const bytes = randomBytes(10);
+    for (let i = 0; i < 10; i++) {
+      temporaryPassword += chars[bytes[i] % chars.length];
+    }
+
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+
+    return { temporaryPassword };
+  }
+
+  async patchUserStatus(id: number, status: 'active' | 'suspended') {
+    if (!['active', 'suspended'].includes(status)) {
+      throw new BadRequestException({ message: 'Invalid status', code: 'VALIDATION_ERROR' });
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { status },
+      include: { roles: { include: { role: true } } },
+    });
+
+    return {
+      id: updated.id,
+      status: updated.status,
+      name: updated.name,
+      email: updated.email,
+      roles: updated.roles.map((r) => r.role.name),
+    };
+  }
+
+  async deleteUser(id: number, adminId: number) {
+    if (id === adminId) {
+      throw new BadRequestException({
+        message: 'Admin accounts cannot be deleted from the portal.',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { roles: { include: { role: true } } },
+    });
+    if (!user) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    const isAdmin = user.roles.some((r) => r.role.name === 'admin');
+    if (isAdmin) {
+      throw new BadRequestException({
+        message: 'Admin accounts cannot be deleted from the portal.',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    await this.prisma.user.delete({ where: { id } });
+    return { success: true };
   }
 
   listOrders(query: Record<string, unknown>) {

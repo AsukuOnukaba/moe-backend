@@ -164,8 +164,8 @@ export class AuthService {
     if (role === 'artisan') {
       const serviceCategories =
         input.serviceCategories && input.serviceCategories.length > 0
-          ? input.serviceCategories.join(',')
-          : null;
+          ? input.serviceCategories.map((s) => s.trim()).filter(Boolean)
+          : [];
       await this.prisma.artisanProfile.create({
         data: {
           userId: user.id,
@@ -341,6 +341,17 @@ export class AuthService {
         if (value === null) return null;
         return Array.isArray(value) ? value.join(',') : value;
       };
+      const normalizeStringArray = (value: string | string[] | null | undefined) => {
+        if (value === undefined) return undefined;
+        if (value === null) return [];
+        if (Array.isArray(value)) {
+          return value.map((s) => String(s).trim()).filter(Boolean);
+        }
+        return value
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      };
 
       artisanProfile = await this.prisma.artisanProfile.upsert({
         where: { userId },
@@ -363,7 +374,7 @@ export class AuthService {
             ? { styleTags: normalizeCommaList(input.artisanProfile.styleTags) }
             : {}),
           ...(input.artisanProfile.serviceCategories !== undefined
-            ? { serviceCategories: normalizeCommaList(input.artisanProfile.serviceCategories) }
+            ? { serviceCategories: normalizeStringArray(input.artisanProfile.serviceCategories) }
             : {}),
         },
       });
@@ -409,7 +420,7 @@ export class AuthService {
       state: string | null;
       category: string | null;
       styleTags: string | null;
-      serviceCategories: string | null;
+      serviceCategories: string | string[] | null;
       estimatedDeliveryDays: number;
       verified: boolean;
       featured: boolean;
@@ -435,9 +446,11 @@ export class AuthService {
               state: artisanProfile?.state ?? null,
               category: artisanProfile?.category ?? null,
               styleTags: artisanProfile?.styleTags ? artisanProfile.styleTags.split(',') : [],
-              serviceCategories: artisanProfile?.serviceCategories
-                ? artisanProfile.serviceCategories.split(',')
-                : [],
+              serviceCategories: Array.isArray(artisanProfile?.serviceCategories)
+                ? artisanProfile.serviceCategories
+                : artisanProfile?.serviceCategories
+                  ? artisanProfile.serviceCategories.split(',')
+                  : [],
               heroImage: artisanProfile?.heroImage ?? user.avatarUrl ?? null,
               verified: artisanProfile?.verified ?? false,
               featured: artisanProfile?.featured ?? false,

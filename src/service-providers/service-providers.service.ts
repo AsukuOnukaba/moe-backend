@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto, toTagArray } from '../common/product-mapper';
+import { toStringList } from '../common/string-list';
 
 function splitCsv(value: string | null | undefined): string[] {
   return toTagArray(value);
@@ -154,7 +155,7 @@ export class ServiceProvidersService {
       category: ap.category ?? null,
       location: ap.location ?? ap.city ?? null,
       styleTags: splitCsv(ap.styleTags),
-      serviceCategories: splitCsv(ap.serviceCategories),
+      serviceCategories: toStringList(ap.serviceCategories),
     };
   }
 }

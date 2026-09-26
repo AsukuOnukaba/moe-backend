@@ -124,7 +124,9 @@ export class AdminService {
         location: profile.location,
         category: profile.category,
         styleTags: profile.styleTags,
-        serviceCategories: profile.serviceCategories,
+        serviceCategories: Array.isArray(profile.serviceCategories)
+          ? profile.serviceCategories
+          : [],
         heroImage: profile.heroImage,
         storeImageUrl: profile.storeImageUrl,
         coverImageUrl: profile.coverImageUrl,

@@ -14,13 +14,10 @@ import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 import { productToDto } from '../common/product-mapper';
 import { normalizeProductCategory } from '../common/product-categories';
 import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service-categories';
+import { toStringList } from '../common/string-list';
 
-function asArrayFromComma(value: string | null | undefined): string[] {
-  if (!value) return [];
-  return value
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+function asArrayFromComma(value: string | string[] | null | undefined): string[] {
+  return toStringList(value);
 }
 
 @Injectable()
@@ -104,6 +101,9 @@ export class ArtisansService {
         storeImageUrl: dto.storeImageUrl ?? null,
         country: dto.country ?? undefined,
         address: dto.address ?? undefined,
+        ...(dto.serviceCategories !== undefined
+          ? { serviceCategories: toStringList(dto.serviceCategories) }
+          : {}),
       },
       update: {
         ...(dto.brandName !== undefined ? { brandName: dto.brandName } : {}),
@@ -121,7 +121,7 @@ export class ArtisansService {
         ...(dto.category !== undefined ? { category: dto.category } : {}),
         ...(dto.styleTags !== undefined ? { styleTags: dto.styleTags } : {}),
         ...(dto.serviceCategories !== undefined
-          ? { serviceCategories: dto.serviceCategories }
+          ? { serviceCategories: toStringList(dto.serviceCategories) }
           : {}),
         ...(dto.heroImage !== undefined ? { heroImage: dto.heroImage } : {}),
         ...(dto.storeImageUrl !== undefined
@@ -339,7 +339,7 @@ export class ArtisansService {
         select: { category: true },
       }),
       this.prisma.artisanProfile.findMany({
-        where: { status: 'approved', serviceCategories: { not: null } },
+        where: { status: 'approved', NOT: { serviceCategories: { equals: [] } } },
         select: { serviceCategories: true },
       }),
       this.prisma.artisanProfile.findMany({

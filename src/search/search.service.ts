@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto, toTagArray } from '../common/product-mapper';
+import { toStringList } from '../common/string-list';
 
 function splitCsv(value: string | null) {
   return toTagArray(value);
@@ -27,7 +28,7 @@ function providerToDto(user: any, ap: any) {
     customOrdersEnabled: ap.customOrdersEnabled ?? false,
     category: ap.category ?? null,
     styleTags: splitCsv(ap.styleTags),
-    serviceCategories: splitCsv(ap.serviceCategories),
+    serviceCategories: toStringList(ap.serviceCategories),
   };
 }
 

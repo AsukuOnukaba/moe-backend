@@ -1,4 +1,12 @@
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import { toStringList } from '../../common/string-list';
 
 export class UpdateArtisanProfileDto {
   @IsOptional()
@@ -41,9 +49,16 @@ export class UpdateArtisanProfileDto {
   @IsString()
   styleTags?: string | null;
 
+  /** Accepts string[] or legacy comma-separated string; normalized to string[]. */
   @IsOptional()
-  @IsString()
-  serviceCategories?: string | null;
+  @Transform(({ value }) => {
+    if (value === undefined) return undefined;
+    if (value === null) return [];
+    return toStringList(value);
+  })
+  @IsArray()
+  @IsString({ each: true })
+  serviceCategories?: string[] | null;
 
   @IsOptional()
   @IsString()

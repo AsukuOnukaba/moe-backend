@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   IsArray,
   IsEmail,
@@ -7,6 +7,7 @@ import {
   IsString,
   ValidateNested,
 } from 'class-validator';
+import { toStringList } from '../../common/string-list';
 
 class ArtisanProfilePatchDto {
   @IsOptional()
@@ -35,6 +36,11 @@ class ArtisanProfilePatchDto {
   styleTags?: string[];
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined) return undefined;
+    if (value === null) return [];
+    return toStringList(value);
+  })
   @IsArray()
   @IsString({ each: true })
   serviceCategories?: string[];

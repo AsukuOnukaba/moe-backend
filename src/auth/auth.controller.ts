@@ -25,7 +25,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AccessTokenPayload } from './types/jwt-payload';
 import { ConfigService } from '@nestjs/config';
-import { createMulterOptions } from '../upload/multer.config';
+import { cloudinaryUrl, createMulterOptions } from '../upload/multer.config';
 
 @Controller('auth')
 export class AuthController {
@@ -98,8 +98,7 @@ export class AuthController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
-    const url = `${baseUrl}/uploads/avatars/${file.filename}`;
+    const url = cloudinaryUrl(file);
     await this.auth.setAvatar((req.user as AccessTokenPayload).sub, url);
     return { url };
   }

@@ -22,7 +22,7 @@ import { ArtisansService } from './artisans.service';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
-import { createMulterOptions } from '../upload/multer.config';
+import { cloudinaryUrl, createMulterOptions } from '../upload/multer.config';
 
 @Controller('artisans')
 export class ArtisansController {
@@ -108,43 +108,31 @@ export class ArtisansController {
   @UseGuards(JwtAuthGuard)
   @Post('me/products/upload-image')
   @UseInterceptors(FileInterceptor('file', createMulterOptions('products')))
-  async uploadProductImage(
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request,
-  ) {
+  async uploadProductImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
-    return { url: `${baseUrl}/uploads/products/${file.filename}` };
+    return { url: cloudinaryUrl(file) };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('me/upload-image')
   @UseInterceptors(FileInterceptor('file', createMulterOptions('store')))
-  async uploadStoreImage(
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request,
-  ) {
+  async uploadStoreImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
-    return { url: `${baseUrl}/uploads/store/${file.filename}` };
+    return { url: cloudinaryUrl(file) };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('me/upload-cover')
   @UseInterceptors(FileInterceptor('file', createMulterOptions('covers')))
-  async uploadCoverImage(
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request,
-  ) {
+  async uploadCoverImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    const baseUrl = process.env.BASE_URL ?? `${req.protocol}://${req.get('host')}`;
-    return { url: `${baseUrl}/uploads/covers/${file.filename}` };
+    return { url: cloudinaryUrl(file) };
   }
 
   @UseGuards(JwtAuthGuard)

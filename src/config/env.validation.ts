@@ -78,6 +78,19 @@ class EnvVars {
   @IsOptional()
   @IsString()
   CLERK_AUTHORIZED_PARTIES?: string;
+
+  /** Cloudinary — required for image uploads (products, store, covers, avatars). */
+  @IsOptional()
+  @IsString()
+  CLOUDINARY_CLOUD_NAME?: string;
+
+  @IsOptional()
+  @IsString()
+  CLOUDINARY_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  CLOUDINARY_API_SECRET?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

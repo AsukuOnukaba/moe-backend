@@ -34,7 +34,16 @@ export function productToDto(p: {
   discountPercent?: number | null;
   status?: string | null;
   customisationRequired?: boolean | null;
+  stockCount?: number | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+  keywords?: { keyword: { term: string } }[] | { term: string }[];
 }) {
+  const keywords = Array.isArray(p.keywords)
+    ? p.keywords.map((k: any) =>
+        k?.keyword?.term != null ? { term: k.keyword.term } : { term: k.term },
+      )
+    : [];
   return {
     id: p.id,
     name: p.name,
@@ -56,5 +65,9 @@ export function productToDto(p: {
     originalPrice: p.originalPrice ?? null,
     status: p.status ?? null,
     customisationRequired: p.customisationRequired ?? false,
+    stockCount: p.stockCount ?? null,
+    metaTitle: p.metaTitle ?? null,
+    metaDescription: p.metaDescription ?? null,
+    keywords,
   };
 }

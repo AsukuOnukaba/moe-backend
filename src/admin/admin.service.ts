@@ -29,6 +29,9 @@ export class AdminService {
       productsApproved,
       productsRejected,
       totalOrders,
+      sections,
+      scoredArtisans,
+      latestScore,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.artisanProfile.count(),
@@ -40,6 +43,17 @@ export class AdminService {
       this.prisma.product.count({ where: { status: 'approved', ...activeProductWhere } }),
       this.prisma.product.count({ where: { status: 'rejected', ...activeProductWhere } }),
       this.prisma.order.count(),
+      this.prisma.curatedSection.findMany({
+        include: {
+          _count: { select: { items: { where: { isActive: true } } } },
+        },
+        orderBy: { sectionKey: 'asc' },
+      }),
+      this.prisma.artisanScore.count(),
+      this.prisma.artisanScore.findFirst({
+        orderBy: { lastCalculatedAt: 'desc' },
+        select: { lastCalculatedAt: true },
+      }),
     ]);
 
     return {
@@ -57,6 +71,19 @@ export class AdminService {
         rejected: productsRejected,
       },
       totalOrders,
+      curation: {
+        sections: sections.map((s) => ({
+          sectionKey: s.sectionKey,
+          label: s.label,
+          isActive: s.isActive,
+          activeItemCount: s._count.items,
+          updatedAt: s.updatedAt,
+        })),
+      },
+      scoring: {
+        scoredArtisans,
+        lastCalculatedAt: latestScore?.lastCalculatedAt ?? null,
+      },
     };
   }
 

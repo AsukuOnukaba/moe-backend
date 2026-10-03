@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
@@ -24,6 +25,10 @@ import { CustomizationModule } from './customization/customization.module';
 import { AdminModule } from './admin/admin.module';
 import { MetaModule } from './meta/meta.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ScoringModule } from './scoring/scoring.module';
+import { SectionsModule } from './sections/sections.module';
+import { KeywordsModule } from './keywords/keywords.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -32,6 +37,7 @@ import { CategoriesModule } from './categories/categories.module';
       validate: validateEnv,
       expandVariables: true,
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
     UsersModule,
@@ -52,6 +58,10 @@ import { CategoriesModule } from './categories/categories.module';
     AdminModule,
     MetaModule,
     CategoriesModule,
+    ScoringModule,
+    SectionsModule,
+    KeywordsModule,
+    EventsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

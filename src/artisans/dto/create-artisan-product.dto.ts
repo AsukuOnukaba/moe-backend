@@ -8,6 +8,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { PRODUCT_CATEGORIES } from '../../common/product-categories';
 
@@ -92,4 +93,26 @@ export class CreateArtisanProductDto {
   @IsOptional()
   @IsInt()
   estimatedDeliveryDays?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  keywords?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  metaTitle?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  metaDescription?: string | null;
+
+  /** Null = stock not tracked. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsInt()
+  @Min(0)
+  stockCount?: number | null;
 }

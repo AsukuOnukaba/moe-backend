@@ -29,7 +29,52 @@ function providerToDto(user: any, ap: any) {
     category: ap.category ?? null,
     styleTags: splitCsv(ap.styleTags),
     serviceCategories: toStringList(ap.serviceCategories),
+    metaTitle: ap.metaTitle ?? null,
+    metaDescription: ap.metaDescription ?? null,
+    keywords: (ap.keywords ?? []).map((k: any) => ({
+      term: k.keyword?.term ?? k.term,
+    })),
   };
+}
+
+/** Higher = more relevant. Never returned in API responses. */
+function productRelevance(p: any, q: string): number {
+  const n = (p.name ?? '').toLowerCase();
+  const cat = (p.category ?? '').toLowerCase();
+  const desc = (p.description ?? '').toLowerCase();
+  const tags = (p.tags ?? '').toLowerCase();
+  const kwTerms = (p.keywords ?? []).map((k: any) =>
+    (k.keyword?.term ?? k.term ?? '').toLowerCase(),
+  );
+  if (n === q) return 1000;
+  if (n.startsWith(q)) return 800;
+  if (n.includes(q)) return 600;
+  if (kwTerms.some((t: string) => t === q)) return 500;
+  if (kwTerms.some((t: string) => t.includes(q))) return 420;
+  if (cat === q || cat.includes(q)) return 350;
+  if (tags.includes(q)) return 250;
+  if (desc.includes(q)) return 100;
+  return 0;
+}
+
+function providerRelevance(u: any, q: string): number {
+  const ap = u.artisanProfile;
+  const brand = (ap?.brandName ?? u.name ?? '').toLowerCase();
+  const business = (ap?.businessName ?? '').toLowerCase();
+  const about = (ap?.about ?? ap?.description ?? '').toLowerCase();
+  const cats = toStringList(ap?.serviceCategories).map((c) => c.toLowerCase());
+  const category = (ap?.category ?? '').toLowerCase();
+  const kwTerms = (ap?.keywords ?? []).map((k: any) =>
+    (k.keyword?.term ?? '').toLowerCase(),
+  );
+  if (brand === q || business === q) return 1000;
+  if (brand.startsWith(q) || business.startsWith(q)) return 800;
+  if (brand.includes(q) || business.includes(q)) return 600;
+  if (kwTerms.some((t: string) => t === q)) return 500;
+  if (kwTerms.some((t: string) => t.includes(q))) return 420;
+  if (category.includes(q) || cats.some((c) => c.includes(q))) return 350;
+  if (about.includes(q)) return 100;
+  return 0;
 }
 
 @Injectable()
@@ -42,6 +87,7 @@ export class SearchService {
     }
 
     const query = q.trim();
+    const qLower = query.toLowerCase();
     const t = type || 'all';
 
     const categories = [
@@ -68,10 +114,20 @@ export class SearchService {
                 { description: { contains: query, mode: 'insensitive' } },
                 { materials: { contains: query, mode: 'insensitive' } },
                 { tags: { contains: query, mode: 'insensitive' } },
+                { category: { contains: query, mode: 'insensitive' } },
+                {
+                  keywords: {
+                    some: {
+                      keyword: {
+                        term: { contains: qLower, mode: 'insensitive' },
+                      },
+                    },
+                  },
+                },
               ],
             },
-            take: 10,
-            orderBy: { updatedAt: 'desc' },
+            include: { keywords: { include: { keyword: true } } },
+            take: 40,
           })
         : Promise.resolve([]),
       includeProviders
@@ -83,22 +139,80 @@ export class SearchService {
                 { name: { contains: query, mode: 'insensitive' } },
                 { phone: { contains: query, mode: 'insensitive' } },
                 { email: { contains: query, mode: 'insensitive' } },
-                { artisanProfile: { about: { contains: query, mode: 'insensitive' } } },
+                {
+                  artisanProfile: {
+                    about: { contains: query, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    brandName: { contains: query, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    businessName: { contains: query, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    description: { contains: query, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    category: { contains: query, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    keywords: {
+                      some: {
+                        keyword: {
+                          term: { contains: qLower, mode: 'insensitive' },
+                        },
+                      },
+                    },
+                  },
+                },
               ],
             } as any,
-            include: { artisanProfile: true },
-            take: 10,
+            include: {
+              artisanProfile: {
+                include: { keywords: { include: { keyword: true } } },
+              },
+            },
+            take: 40,
           })
         : Promise.resolve([]),
     ]);
 
+    const rankedProducts = (products as any[])
+      .map((p) => ({ p, score: productRelevance(p, qLower) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(({ p }) => productToDto(p));
+
+    const rankedProviders = (providers as any[])
+      .map((u) => ({ u, score: providerRelevance(u, qLower) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(({ u }) => providerToDto(u, u.artisanProfile));
+
     return {
-      products: (products as any[]).map(productToDto),
-      providers: (providers as any[]).map((u) => providerToDto(u, u.artisanProfile)),
+      products: rankedProducts,
+      providers: rankedProviders,
       categories: includeCategories
-        ? categories.filter((c) => c.id.includes(query.toLowerCase()) || c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 10)
+        ? categories
+            .filter(
+              (c) =>
+                c.id.includes(qLower) ||
+                c.name.toLowerCase().includes(qLower),
+            )
+            .slice(0, 10)
         : [],
     };
   }
 }
-

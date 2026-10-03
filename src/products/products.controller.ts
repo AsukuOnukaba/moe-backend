@@ -42,6 +42,16 @@ export class ProductsController {
     return this.products.recommendations(query);
   }
 
+  /** Batch lookup by ids (comma-separated), order preserved. */
+  @Get('by-ids')
+  byIds(@Query('ids') ids?: string) {
+    const parsed = (ids ?? '')
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    return this.products.getProductsByIds(parsed);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get(':id/reviews/mine')
   getMyReview(@Param('id') id: string, @Req() req: Request) {

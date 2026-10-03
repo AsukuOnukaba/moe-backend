@@ -15,6 +15,7 @@ import { productToDto } from '../common/product-mapper';
 import { normalizeProductCategory } from '../common/product-categories';
 import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service-categories';
 import { toStringList } from '../common/string-list';
+import { KeywordsService } from '../keywords/keywords.service';
 
 function asArrayFromComma(value: string | string[] | null | undefined): string[] {
   return toStringList(value);
@@ -25,6 +26,7 @@ export class ArtisansService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly keywords: KeywordsService,
   ) {}
 
   private requireArtisan(user: AccessTokenPayload) {
@@ -147,8 +149,14 @@ export class ArtisansService {
         ...(dto.estimatedDeliveryDays !== undefined
           ? { estimatedDeliveryDays: dto.estimatedDeliveryDays }
           : {}),
+        ...(dto.metaTitle !== undefined ? { metaTitle: dto.metaTitle } : {}),
+        ...(dto.metaDescription !== undefined
+          ? { metaDescription: dto.metaDescription }
+          : {}),
       },
     });
+
+    await this.keywords.syncArtisanKeywords(userId, dto.keywords);
 
     // return same shape as getMe
     const u = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -237,11 +245,19 @@ export class ArtisansService {
         discountPercent: dto.discountPercent ?? null,
         estimatedDelivery: dto.estimatedDelivery ?? null,
         estimatedDeliveryDays: dto.estimatedDeliveryDays ?? 7,
+        metaTitle: dto.metaTitle ?? null,
+        metaDescription: dto.metaDescription ?? null,
+        stockCount: dto.stockCount ?? null,
         status: 'pending',
       },
     });
 
-    return productToDto(created);
+    await this.keywords.syncProductKeywords(created.id, dto.keywords);
+    const withKw = await this.prisma.product.findUnique({
+      where: { id: created.id },
+      include: { keywords: { include: { keyword: true } } },
+    });
+    return productToDto(withKw ?? created);
   }
 
   async patchProduct(
@@ -308,10 +324,20 @@ export class ArtisansService {
         ...(dto.estimatedDeliveryDays !== undefined
           ? { estimatedDeliveryDays: dto.estimatedDeliveryDays }
           : {}),
+        ...(dto.metaTitle !== undefined ? { metaTitle: dto.metaTitle } : {}),
+        ...(dto.metaDescription !== undefined
+          ? { metaDescription: dto.metaDescription }
+          : {}),
+        ...(dto.stockCount !== undefined ? { stockCount: dto.stockCount } : {}),
       },
     });
 
-    return productToDto(updated);
+    await this.keywords.syncProductKeywords(productId, dto.keywords);
+    const withKw = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: { keywords: { include: { keyword: true } } },
+    });
+    return productToDto(withKw ?? updated);
   }
 
   async deleteProduct(user: AccessTokenPayload, productId: number) {
@@ -450,7 +476,10 @@ export class ArtisansService {
   async getById(artisanId: number) {
     const profile = await this.prisma.artisanProfile.findFirst({
       where: { userId: artisanId, status: 'approved' },
-      include: { user: true },
+      include: {
+        user: true,
+        keywords: { include: { keyword: true } },
+      },
     });
     if (!profile) {
       throw new NotFoundException({
@@ -538,6 +567,9 @@ export class ArtisansService {
       reviewCount: number;
       verified: boolean;
       featured: boolean;
+      metaTitle?: string | null;
+      metaDescription?: string | null;
+      keywords?: { keyword: { term: string } }[];
     },
     user: { name: string },
     productCount: number,
@@ -560,6 +592,9 @@ export class ArtisansService {
       verified: a.verified ?? false,
       featured: a.featured ?? false,
       productCount,
+      metaTitle: a.metaTitle ?? null,
+      metaDescription: a.metaDescription ?? null,
+      keywords: (a.keywords ?? []).map((k) => ({ term: k.keyword.term })),
     };
   }
 }

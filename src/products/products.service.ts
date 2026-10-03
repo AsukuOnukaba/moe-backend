@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto } from '../common/product-mapper';
+import { EventsService } from '../events/events.service';
 import { getCustomisationTemplate } from './product-customisation.templates';
 
 type Pagination = {
@@ -15,7 +16,10 @@ const APPROVED_STATUS = 'approved';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventsService,
+  ) {}
 
   async listProducts(query: any) {
     const page = Math.max(1, Number(query?.page ?? 1));
@@ -116,9 +120,26 @@ export class ProductsService {
   async getProductById(id: number) {
     const p = await this.prisma.product.findFirst({
       where: { id, status: APPROVED_STATUS, ...activeProductWhere },
+      include: { keywords: { include: { keyword: true } } },
     });
     if (!p) return null;
-    return productToDto(p);
+    const views = await this.events.productViewStats(id);
+    return { ...productToDto(p), ...views };
+  }
+
+  /** Batch lookup preserving caller order (for recently viewed). */
+  async getProductsByIds(ids: number[]) {
+    if (!ids.length) return [];
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: { in: ids },
+        status: APPROVED_STATUS,
+        ...activeProductWhere,
+      },
+      include: { keywords: { include: { keyword: true } } },
+    });
+    const byId = new Map(products.map((p) => [p.id, productToDto(p)]));
+    return ids.map((id) => byId.get(id)).filter(Boolean);
   }
 
   async getCustomisationTemplate(category: string) {

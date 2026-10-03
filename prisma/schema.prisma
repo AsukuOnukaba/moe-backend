@@ -34,6 +34,7 @@ model User {
   artisanReviews        ArtisanReview[] @relation("CustomerReviews")
   productReviews        ProductReview[]
   notifications         Notification[]
+  behaviourEvents       UserBehaviourEvent[]
 }
 
 model Address {
@@ -99,6 +100,11 @@ model ArtisanProfile {
 
   products Product[]
   reviews  ArtisanReview[]
+  keywords ArtisanKeyword[]
+  score    ArtisanScore?
+
+  metaTitle       String?
+  metaDescription String?
 
   providerConversations Conversation[] @relation("ProviderConversations")
 
@@ -166,6 +172,10 @@ model Product {
   estimatedDeliveryDays Int     @default(7)
   estimatedDelivery     String?
 
+  metaTitle       String?
+  metaDescription String?
+  stockCount      Int?
+
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -173,6 +183,7 @@ model Product {
 
   wishlistItems WishlistItem[]
   reviews       ProductReview[]
+  keywords      ProductKeyword[]
 
   @@index([providerId])
   @@index([artisanId])
@@ -380,4 +391,98 @@ model Category {
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Internal admin-only artisan performance score (never exposed on public APIs).
+model ArtisanScore {
+  id                  String   @id @default(uuid())
+  artisanId           Int      @unique
+  artisan             ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
+  orderCompletionRate Float    @default(0)
+  avgResponseTimeHrs  Float?
+  reviewQualityScore  Float    @default(0)
+  activityScore       Float    @default(0)
+  compositeScore      Float    @default(0)
+  lastCalculatedAt    DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([compositeScore])
+}
+
+model CuratedSection {
+  id         String        @id @default(uuid())
+  sectionKey String        @unique
+  label      String
+  isActive   Boolean       @default(true)
+  keywords   String[]      @default([])
+  items      CuratedItem[]
+  updatedAt  DateTime      @updatedAt
+  updatedBy  String?
+
+  @@index([isActive])
+}
+
+model CuratedItem {
+  id        String         @id @default(uuid())
+  sectionId String
+  section   CuratedSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  /// "artisan" | "product"
+  itemType  String
+  /// Stringified Int id of Product or ArtisanProfile.userId
+  itemId    String
+  position  Int
+  isActive  Boolean        @default(true)
+  addedBy   String?
+  addedAt   DateTime       @default(now())
+
+  @@unique([sectionId, itemId])
+  @@index([sectionId, position])
+  @@index([sectionId, isActive])
+}
+
+model Keyword {
+  id        String           @id @default(uuid())
+  term      String           @unique
+  products  ProductKeyword[]
+  artisans  ArtisanKeyword[]
+  createdAt DateTime         @default(now())
+}
+
+model ProductKeyword {
+  productId Int
+  keywordId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  keyword   Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@id([productId, keywordId])
+  @@index([keywordId])
+}
+
+model ArtisanKeyword {
+  artisanId Int
+  keywordId String
+  artisan   ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
+  keyword   Keyword        @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@id([artisanId, keywordId])
+  @@index([keywordId])
+}
+
+model UserBehaviourEvent {
+  id         String   @id @default(uuid())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId  String
+  eventType  String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([eventType])
+  @@index([entityId])
+  @@index([entityType, eventType, createdAt])
+  @@index([sessionId, eventType, entityId, createdAt])
 }

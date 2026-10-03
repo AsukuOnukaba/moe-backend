@@ -125,5 +125,18 @@ export class UpdateArtisanProfileDto {
   @IsOptional()
   @IsString()
   installmentDetails?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  keywords?: string[];
+
+  @IsOptional()
+  @IsString()
+  metaTitle?: string | null;
+
+  @IsOptional()
+  @IsString()
+  metaDescription?: string | null;
 }
 

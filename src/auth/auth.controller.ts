@@ -18,6 +18,7 @@ import { AuthService } from './auth.service';
 import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRegisterDto } from './dto/auth-register.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
+import { AuthClerkVerifyDto } from './dto/auth-clerk-verify.dto';
 import { AuthProfilePatchDto } from './dto/auth-profile-patch.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -60,6 +61,12 @@ export class AuthController {
     url.searchParams.set('token', result.token);
     url.searchParams.set('refreshToken', result.refreshToken);
     return res.redirect(url.toString());
+  }
+
+  /** Exchange a Clerk session token for MOE access/refresh tokens. */
+  @Post('clerk-verify')
+  async clerkVerify(@Body() dto: AuthClerkVerifyDto) {
+    return this.auth.handleClerkLogin(dto.token);
   }
 
   @Post('refresh-token')

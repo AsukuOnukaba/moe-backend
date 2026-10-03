@@ -1,5 +1,4 @@
 node_modules
 dist/
-.env
 uploads/dist/tsconfig.build.tsbuildinfo
-.env
+

@@ -69,6 +69,15 @@ class EnvVars {
   @IsString()
   ALLOW_CONVERSATION_BULK_DELETE?: string;
 
+  /** Clerk secret key (sk_test_… / sk_live_…) — enables POST /auth/clerk-verify. */
+  @IsOptional()
+  @IsString()
+  CLERK_SECRET_KEY?: string;
+
+  /** Optional: restricts accepted session tokens to these origins (comma-separated). */
+  @IsOptional()
+  @IsString()
+  CLERK_AUTHORIZED_PARTIES?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

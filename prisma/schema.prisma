@@ -15,6 +15,7 @@ model User {
   phone                     String?
   avatarUrl                 String?
   googleId                  String?   @unique
+  clerkId                   String?   @unique
   status                    String    @default("active")
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt

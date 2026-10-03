@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload, MoeRole, RefreshTokenPayload } from './types/jwt-payload';
 import type { ErrorCode } from '../common/errors/error-codes';
@@ -255,6 +256,109 @@ export class AuthService {
     const role = await this.resolvePrimaryRole(user.id);
     const tokens = await this.issueTokens(user, role);
     return { ...tokens, user: await this.toProfile(user, role) };
+  }
+
+  /**
+   * Exchanges a Clerk session token for MOE API tokens.
+   *
+   * 1. Verifies the token against Clerk's JWKS using the secret key.
+   * 2. Loads the Clerk user to get email / name / avatar / Google account.
+   * 3. Finds the MOE user by `clerkId`, then by email (existing MOE user
+   *    connecting Google for the first time), otherwise creates a new customer.
+   * 4. Issues the same access/refresh tokens as `/auth/login`.
+   */
+  async handleClerkLogin(sessionToken: string) {
+    const secretKey = this.config.get<string>('CLERK_SECRET_KEY');
+    if (!secretKey) {
+      throw new BadRequestException({
+        message: 'Clerk sign-in is not configured on this server',
+        code: 'VALIDATION_ERROR' satisfies ErrorCode,
+      });
+    }
+
+    const authorizedParties = (this.config.get<string>('CLERK_AUTHORIZED_PARTIES') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    // verifyToken returns { data, errors } for signature/claim failures but throws
+    // for malformed input — treat both as invalid credentials, not a 500.
+    const verified = await verifyToken(sessionToken, {
+      secretKey,
+      ...(authorizedParties.length > 0 ? { authorizedParties } : {}),
+    }).catch(() => null);
+    const clerkUserId = (verified?.data as { sub?: string } | undefined)?.sub;
+    if (!verified || verified.errors || !clerkUserId) {
+      throw authError('Clerk session token invalid or expired', 'AUTH_INVALID_CREDENTIALS');
+    }
+
+    const clerk = createClerkClient({ secretKey });
+    const clerkUser = await clerk.users.getUser(clerkUserId).catch(() => null);
+    if (!clerkUser) {
+      throw authError('Clerk user not found', 'AUTH_INVALID_CREDENTIALS');
+    }
+
+    const primaryEmail =
+      clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)
+        ?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
+    if (!primaryEmail) {
+      throw new BadRequestException({
+        message: 'Clerk account has no email address',
+        code: 'VALIDATION_ERROR' satisfies ErrorCode,
+      });
+    }
+    const email = primaryEmail.toLowerCase();
+    const name =
+      [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ').trim() ||
+      email.split('@')[0];
+    const avatarUrl = clerkUser.imageUrl || null;
+    const googleId =
+      clerkUser.externalAccounts.find((a) => a.provider === 'oauth_google' || a.provider === 'google')
+        ?.providerUserId ?? null;
+
+    let user = await this.prisma.user.findUnique({ where: { clerkId: clerkUserId } });
+    let isNewUser = false;
+
+    if (!user) {
+      // Existing MOE account (email/password or legacy Google) → link it to Clerk.
+      const byEmail = await this.prisma.user.findUnique({ where: { email } });
+      if (byEmail) {
+        user = await this.prisma.user.update({
+          where: { id: byEmail.id },
+          data: {
+            clerkId: clerkUserId,
+            avatarUrl: byEmail.avatarUrl ?? avatarUrl,
+            ...(googleId && !byEmail.googleId ? { googleId } : {}),
+          },
+        });
+      } else {
+        // First-time Google / Clerk sign-in → create a customer account.
+        const passwordHash = await bcrypt.hash(randomUUID(), 12);
+        user = await this.prisma.user.create({
+          data: {
+            name,
+            email,
+            passwordHash,
+            clerkId: clerkUserId,
+            avatarUrl,
+            ...(googleId ? { googleId } : {}),
+          },
+        });
+        await this.ensureUserRole(user.id, 'customer');
+        isNewUser = true;
+      }
+    }
+
+    if (user.status === 'suspended') {
+      throw new ForbiddenException({
+        message: 'Your account has been suspended. Contact support.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const role = await this.resolvePrimaryRole(user.id);
+    const tokens = await this.issueTokens(user, role);
+    return { ...tokens, user: await this.toProfile(user, role), isNewUser };
   }
 
   async refresh(refreshToken: string) {

@@ -332,8 +332,8 @@ export class AuthService {
           },
         });
       } else {
-        // First-time Clerk sign-up (Google or email). The frontend passes the
-        // chosen account type through <SignUp unsafeMetadata={{ role, serviceCategories }} />,
+        // First-time Clerk Google sign-up. The frontend passes the chosen account
+        // type via signUp.sso({ unsafeMetadata: { role, serviceCategories } }),
         // which Clerk copies onto the user — mirror what /auth/register does with it.
         const { role: requestedRole, serviceCategories } = this.parseClerkSignUpMetadata(
           clerkUser.unsafeMetadata,

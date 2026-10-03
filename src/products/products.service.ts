@@ -27,8 +27,17 @@ export class ProductsService {
     const featured =
       query?.featured === 'true' ? true : query?.featured === 'false' ? false : undefined;
 
-    const priceMin = query?.priceMin !== undefined ? Number(query.priceMin) : undefined;
-    const priceMax = query?.priceMax !== undefined ? Number(query.priceMax) : undefined;
+    // Accept both minPrice/maxPrice (preferred) and legacy priceMin/priceMax.
+    const minPriceRaw = query?.minPrice ?? query?.priceMin;
+    const maxPriceRaw = query?.maxPrice ?? query?.priceMax;
+    const minPrice =
+      minPriceRaw !== undefined && minPriceRaw !== '' ? Number(minPriceRaw) : undefined;
+    const maxPrice =
+      maxPriceRaw !== undefined && maxPriceRaw !== '' ? Number(maxPriceRaw) : undefined;
+    const country =
+      typeof query?.country === 'string' && query.country.trim()
+        ? query.country.trim()
+        : undefined;
 
     const where: any = { status: APPROVED_STATUS, ...activeProductWhere };
     if (category) where.category = category;
@@ -45,10 +54,21 @@ export class ProductsService {
         tags: { contains: tag, mode: 'insensitive' },
       }));
     }
-    if (priceMin !== undefined || priceMax !== undefined) {
+    if (
+      (minPrice !== undefined && Number.isFinite(minPrice)) ||
+      (maxPrice !== undefined && Number.isFinite(maxPrice))
+    ) {
       where.price = {};
-      if (priceMin !== undefined) where.price.gte = priceMin;
-      if (priceMax !== undefined) where.price.lte = priceMax;
+      if (minPrice !== undefined && Number.isFinite(minPrice)) where.price.gte = minPrice;
+      if (maxPrice !== undefined && Number.isFinite(maxPrice)) where.price.lte = maxPrice;
+    }
+
+    if (country) {
+      where.provider = {
+        artisanProfile: {
+          country: { equals: country, mode: 'insensitive' },
+        },
+      };
     }
 
     if (q.length >= 2) {

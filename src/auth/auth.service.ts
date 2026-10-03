@@ -87,7 +87,11 @@ export class AuthService {
     });
   }
 
-  private async issueTokens(user: { id: number; email: string }, role: MoeRole) {
+  private async issueTokens(
+    user: { id: number; email: string },
+    role: MoeRole,
+    options?: { accessExpiresIn?: string },
+  ) {
     const accessPayload: AccessTokenPayload = {
       sub: user.id,
       email: user.email,
@@ -96,10 +100,11 @@ export class AuthService {
 
     const jti = randomUUID();
     const refreshPayload: RefreshTokenPayload = { sub: user.id, jti };
+    const accessExpiresIn = options?.accessExpiresIn ?? this.accessExpiresIn();
 
     const accessToken = await this.jwt.signAsync(accessPayload, {
       secret: this.accessSecret(),
-      expiresIn: this.accessExpiresIn() as any,
+      expiresIn: accessExpiresIn as any,
     });
 
     const refreshToken = await this.jwt.signAsync(refreshPayload, {
@@ -185,7 +190,7 @@ export class AuthService {
     };
   }
 
-  async login(input: { email: string; password: string }) {
+  async login(input: { email: string; password: string; rememberMe?: boolean }) {
     const user = await this.prisma.user.findUnique({
       where: { email: input.email.toLowerCase() },
     });
@@ -205,7 +210,9 @@ export class AuthService {
     }
 
     const role = await this.resolvePrimaryRole(user.id);
-    const tokens = await this.issueTokens(user, role);
+    // rememberMe: true → 30d; false/omitted → 24h (session default).
+    const accessExpiresIn = input.rememberMe === true ? '30d' : '24h';
+    const tokens = await this.issueTokens(user, role, { accessExpiresIn });
     return {
       ...tokens,
       user: await this.toProfile(user, role),

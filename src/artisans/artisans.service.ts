@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { activeProductWhere } from '../common/active-product';
+import { activeProductWhere, publicProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
@@ -391,16 +391,31 @@ export class ArtisansService {
     };
   }
 
-  async getAll(page?: number, pageSize?: number, category?: string) {
+  async getAll(
+    page?: number,
+    pageSize?: number,
+    filters?: {
+      category?: string;
+      country?: string;
+      state?: string;
+      city?: string;
+    },
+  ) {
     const safePage = Math.max(1, page ?? 1);
     const safePageSize = Math.max(1, Math.min(100, pageSize ?? 20));
 
     const where: any = { status: 'approved' };
-    if (category) {
-      where.category = {
-        equals: category,
-        mode: 'insensitive',
-      };
+    if (filters?.category) {
+      where.category = { equals: filters.category, mode: 'insensitive' };
+    }
+    if (filters?.country) {
+      where.country = { equals: filters.country, mode: 'insensitive' };
+    }
+    if (filters?.state) {
+      where.state = { equals: filters.state, mode: 'insensitive' };
+    }
+    if (filters?.city) {
+      where.city = { equals: filters.city, mode: 'insensitive' };
     }
 
     const totalItems = await this.prisma.artisanProfile.count({ where });
@@ -411,26 +426,14 @@ export class ArtisansService {
       skip: (safePage - 1) * safePageSize,
       take: safePageSize,
       orderBy: { rating: 'desc' },
-      include: {
-        user: true,
-      },
+      include: { user: true },
     });
 
-    const data = artisans.map((a) => ({
-      id: a.userId,
-      name: a.user.name,
-      brandName: a.brandName ?? a.user.name,
-      businessName: a.businessName ?? null,
-      description: a.description ?? null,
-      location: a.location ?? null,
-      category: a.category ?? null,
-      images: a.images ?? [],
-      heroImage: a.heroImage ?? null,
-      rating: a.rating ?? 0,
-      reviewCount: a.reviewCount ?? 0,
-      verified: a.verified ?? false,
-      featured: a.featured ?? false,
-    }));
+    const counts = await this.countPublicProductsByProvider(
+      artisans.map((a) => a.userId),
+    );
+
+    const data = artisans.map((a) => this.toPublicArtisan(a, a.user, counts.get(a.userId) ?? 0));
 
     return {
       data,
@@ -440,6 +443,123 @@ export class ArtisansService {
         totalPages,
         totalItems,
       },
+    };
+  }
+
+  /** Public artisan detail — same productCount filter as listing / :id/products. */
+  async getById(artisanId: number) {
+    const profile = await this.prisma.artisanProfile.findFirst({
+      where: { userId: artisanId, status: 'approved' },
+      include: { user: true },
+    });
+    if (!profile) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+    const productCount = await this.prisma.product.count({
+      where: { providerId: artisanId, ...publicProductWhere },
+    });
+    return this.toPublicArtisan(profile, profile.user, productCount);
+  }
+
+  /** Public product list for an artisan (approved + not soft-deleted only). */
+  async listPublicProducts(artisanId: number, page?: number, pageSize?: number) {
+    const profile = await this.prisma.artisanProfile.findFirst({
+      where: { userId: artisanId, status: 'approved' },
+      select: { userId: true },
+    });
+    if (!profile) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    const safePage = Math.max(1, page ?? 1);
+    const safePageSize = Math.max(1, Math.min(100, pageSize ?? 20));
+    const where = { providerId: artisanId, ...publicProductWhere };
+
+    const totalItems = await this.prisma.product.count({ where });
+    const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
+    const items = await this.prisma.product.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      skip: (safePage - 1) * safePageSize,
+      take: safePageSize,
+    });
+
+    return {
+      data: items.map((p) => productToDto(p)),
+      pagination: {
+        page: safePage,
+        pageSize: safePageSize,
+        totalPages,
+        totalItems,
+      },
+    };
+  }
+
+  private async countPublicProductsByProvider(
+    providerIds: number[],
+  ): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    if (providerIds.length === 0) return map;
+
+    const rows = await this.prisma.product.groupBy({
+      by: ['providerId'],
+      where: {
+        providerId: { in: providerIds },
+        ...publicProductWhere,
+      },
+      _count: { _all: true },
+    });
+    for (const row of rows) {
+      if (row.providerId != null) map.set(row.providerId, row._count._all);
+    }
+    return map;
+  }
+
+  private toPublicArtisan(
+    a: {
+      userId: number;
+      brandName: string | null;
+      businessName: string | null;
+      description: string | null;
+      location: string | null;
+      city: string | null;
+      state: string | null;
+      country: string | null;
+      category: string | null;
+      images: string[];
+      heroImage: string | null;
+      rating: number;
+      reviewCount: number;
+      verified: boolean;
+      featured: boolean;
+    },
+    user: { name: string },
+    productCount: number,
+  ) {
+    return {
+      id: a.userId,
+      name: user.name,
+      brandName: a.brandName ?? user.name,
+      businessName: a.businessName ?? null,
+      description: a.description ?? null,
+      location: a.location ?? a.city ?? null,
+      city: a.city ?? null,
+      state: a.state ?? null,
+      country: a.country ?? null,
+      category: a.category ?? null,
+      images: a.images ?? [],
+      heroImage: a.heroImage ?? null,
+      rating: a.rating ?? 0,
+      reviewCount: a.reviewCount ?? 0,
+      verified: a.verified ?? false,
+      featured: a.featured ?? false,
+      productCount,
     };
   }
 }

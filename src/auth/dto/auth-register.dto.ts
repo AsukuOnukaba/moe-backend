@@ -1,4 +1,12 @@
-import { IsArray, IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MinLength,
+} from 'class-validator';
 
 export class AuthRegisterDto {
   @IsString()
@@ -10,6 +18,10 @@ export class AuthRegisterDto {
 
   @IsString()
   @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/, {
+    message:
+      'Password must contain uppercase, lowercase, number and special character',
+  })
   password!: string;
 
   @IsOptional()
@@ -25,4 +37,3 @@ export class AuthRegisterDto {
   @IsString({ each: true })
   serviceCategories?: string[];
 }
-

@@ -65,10 +65,18 @@ export class ArtisansController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('category') category?: string,
+    @Query('country') country?: string,
+    @Query('state') state?: string,
+    @Query('city') city?: string,
   ) {
     const pageNum = page ? Number(page) : 1;
     const sizeNum = pageSize ? Number(pageSize) : 20;
-    return this.artisans.getAll(pageNum, sizeNum, category);
+    return this.artisans.getAll(pageNum, sizeNum, {
+      category: category?.trim() || undefined,
+      country: country?.trim() || undefined,
+      state: state?.trim() || undefined,
+      city: city?.trim() || undefined,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -151,5 +159,25 @@ export class ArtisansController {
   async deleteProduct(@Req() req: Request, @Param('id') id: string) {
     const user = req.user as AccessTokenPayload | undefined;
     return this.artisans.deleteProduct(user!, Number(id));
+  }
+
+  /** Public products for an artisan — same filter as productCount on listing/detail. */
+  @Get(':id/products')
+  async listPublicProducts(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.artisans.listPublicProducts(
+      Number(id),
+      page ? Number(page) : 1,
+      pageSize ? Number(pageSize) : 20,
+    );
+  }
+
+  /** Public artisan detail (approved only). */
+  @Get(':id')
+  async getById(@Param('id') id: string) {
+    return this.artisans.getById(Number(id));
   }
 }

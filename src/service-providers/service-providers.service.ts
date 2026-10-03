@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { activeProductWhere } from '../common/active-product';
+import { publicProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto, toTagArray } from '../common/product-mapper';
 import { toStringList } from '../common/string-list';
@@ -22,6 +22,12 @@ export class ServiceProvidersService {
       typeof query?.category === 'string' ? query.category.trim() : undefined;
     const location =
       typeof query?.location === 'string' ? query.location.trim() : undefined;
+    const country =
+      typeof query?.country === 'string' ? query.country.trim() : undefined;
+    const state =
+      typeof query?.state === 'string' ? query.state.trim() : undefined;
+    const city =
+      typeof query?.city === 'string' ? query.city.trim() : undefined;
     const serviceCategories =
       typeof query?.serviceCategories === 'string'
         ? query.serviceCategories.split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -45,8 +51,7 @@ export class ServiceProvidersService {
       const providerIdsWithProducts = await this.prisma.product.findMany({
         where: {
           category: cat,
-          status: 'approved',
-          deletedAt: null,
+          ...publicProductWhere,
         },
         select: { providerId: true },
         distinct: ['providerId'],
@@ -68,6 +73,18 @@ export class ServiceProvidersService {
           p.location?.toLowerCase().includes(loc),
       );
     }
+    if (country) {
+      const c = country.toLowerCase();
+      providers = providers.filter((p) => p.country?.toLowerCase() === c);
+    }
+    if (state) {
+      const s = state.toLowerCase();
+      providers = providers.filter((p) => p.state?.toLowerCase() === s);
+    }
+    if (city) {
+      const c = city.toLowerCase();
+      providers = providers.filter((p) => p.city?.toLowerCase() === c);
+    }
     if (serviceCategories.length > 0) {
       providers = providers.filter((p) =>
         serviceCategories.some((sc: string) =>
@@ -82,8 +99,17 @@ export class ServiceProvidersService {
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     const pageItems = providers.slice(skip, skip + pageSize);
 
+    // Live productCount — same filter as GET …/products (approved + not deleted).
+    const counts = await this.countPublicProducts(
+      pageItems.map((p) => p.id as number),
+    );
+    const data = pageItems.map((p) => ({
+      ...p,
+      productCount: counts.get(p.id as number) ?? 0,
+    }));
+
     return {
-      data: pageItems,
+      data,
       pagination: { page, pageSize, totalPages, totalItems },
     };
   }
@@ -96,12 +122,18 @@ export class ServiceProvidersService {
     if (!user || !user.artisanProfile || user.artisanProfile.status !== 'approved') {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
-    return this.userToProvider(user, user.artisanProfile, false);
+    const productCount = await this.prisma.product.count({
+      where: { providerId: id, ...publicProductWhere },
+    });
+    return {
+      ...this.userToProvider(user, user.artisanProfile, false),
+      productCount,
+    };
   }
 
   async listProductsByProvider(providerId: number, query: any) {
     const products = await this.prisma.product.findMany({
-      where: { providerId, status: 'approved', ...activeProductWhere },
+      where: { providerId, ...publicProductWhere },
       orderBy: { updatedAt: 'desc' },
       skip: (Math.max(1, Number(query?.page ?? 1)) - 1) * Math.max(1, Number(query?.pageSize ?? 20)),
       take: Math.max(1, Number(query?.pageSize ?? 20)),
@@ -110,7 +142,7 @@ export class ServiceProvidersService {
     const page = Math.max(1, Number(query?.page ?? 1));
     const pageSize = Math.max(1, Number(query?.pageSize ?? 20));
     const totalItems = await this.prisma.product.count({
-      where: { providerId, status: 'approved', ...activeProductWhere },
+      where: { providerId, ...publicProductWhere },
     });
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
@@ -120,6 +152,20 @@ export class ServiceProvidersService {
       data,
       pagination: { page, pageSize, totalPages, totalItems },
     };
+  }
+
+  private async countPublicProducts(providerIds: number[]) {
+    const map = new Map<number, number>();
+    if (providerIds.length === 0) return map;
+    const rows = await this.prisma.product.groupBy({
+      by: ['providerId'],
+      where: { providerId: { in: providerIds }, ...publicProductWhere },
+      _count: { _all: true },
+    });
+    for (const row of rows) {
+      if (row.providerId != null) map.set(row.providerId, row._count._all);
+    }
+    return map;
   }
 
   async recommendations() {

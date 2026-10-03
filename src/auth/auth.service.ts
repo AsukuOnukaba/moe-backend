@@ -332,7 +332,12 @@ export class AuthService {
           },
         });
       } else {
-        // First-time Google / Clerk sign-in → create a customer account.
+        // First-time Clerk sign-up (Google or email). The frontend passes the
+        // chosen account type through <SignUp unsafeMetadata={{ role, serviceCategories }} />,
+        // which Clerk copies onto the user — mirror what /auth/register does with it.
+        const { role: requestedRole, serviceCategories } = this.parseClerkSignUpMetadata(
+          clerkUser.unsafeMetadata,
+        );
         const passwordHash = await bcrypt.hash(randomUUID(), 12);
         user = await this.prisma.user.create({
           data: {
@@ -344,7 +349,18 @@ export class AuthService {
             ...(googleId ? { googleId } : {}),
           },
         });
-        await this.ensureUserRole(user.id, 'customer');
+        await this.ensureUserRole(user.id, requestedRole);
+        if (requestedRole === 'artisan') {
+          await this.prisma.artisanProfile.create({
+            data: {
+              userId: user.id,
+              brandName: name,
+              heroImage: null,
+              serviceCategories,
+              status: 'pending',
+            },
+          });
+        }
         isNewUser = true;
       }
     }
@@ -359,6 +375,25 @@ export class AuthService {
     const role = await this.resolvePrimaryRole(user.id);
     const tokens = await this.issueTokens(user, role);
     return { ...tokens, user: await this.toProfile(user, role), isNewUser };
+  }
+
+  /**
+   * `unsafeMetadata` is client-writable, so treat it as untrusted input:
+   * only `customer` / `artisan` are honoured and categories must be strings.
+   */
+  private parseClerkSignUpMetadata(metadata: unknown): {
+    role: 'customer' | 'artisan';
+    serviceCategories: string[];
+  } {
+    const meta = (metadata ?? {}) as { role?: unknown; serviceCategories?: unknown };
+    const role = meta.role === 'artisan' ? 'artisan' : 'customer';
+    const serviceCategories = Array.isArray(meta.serviceCategories)
+      ? meta.serviceCategories
+          .filter((s): s is string => typeof s === 'string')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    return { role, serviceCategories };
   }
 
   async refresh(refreshToken: string) {

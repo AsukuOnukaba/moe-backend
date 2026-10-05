@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -49,16 +50,16 @@ export class AdminController {
   }
 
   @Get('artisans/:id')
-  getArtisan(@Param('id') id: string) {
-    return this.admin.getArtisan(Number(id));
+  getArtisan(@Param('id', ParseIntPipe) id: number) {
+    return this.admin.getArtisan(id);
   }
 
   @Patch('artisans/:id/status')
   patchArtisanStatus(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() body: { status: 'approved' | 'rejected'; reason?: string },
   ) {
-    return this.admin.patchArtisanStatus(Number(id), body.status, body.reason);
+    return this.admin.patchArtisanStatus(id, body.status, body.reason);
   }
 
   @Get('products')

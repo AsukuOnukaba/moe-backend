@@ -1,3 +1,8 @@
+import { webcrypto } from 'crypto';
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto as unknown as Crypto;
+}
+
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';

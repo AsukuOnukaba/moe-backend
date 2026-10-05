@@ -146,52 +146,58 @@ export class ArtisanScoringService {
   }
 
   async listScores(page = 1, pageSize = 50) {
-    const take = Math.min(Math.max(pageSize, 1), 100);
-    const skip = (Math.max(page, 1) - 1) * take;
-    const [total, rows] = await Promise.all([
-      this.prisma.artisanScore.count(),
-      this.prisma.artisanScore.findMany({
-        orderBy: { compositeScore: 'desc' },
-        skip,
-        take,
-        include: {
-          artisan: {
-            select: {
-              userId: true,
-              brandName: true,
-              businessName: true,
-              category: true,
-              status: true,
-              rating: true,
-              user: { select: { name: true, email: true, avatarUrl: true } },
+    try {
+      const take = Math.min(Math.max(pageSize, 1), 100);
+      const skip = (Math.max(page, 1) - 1) * take;
+      const [total, rows] = await Promise.all([
+        this.prisma.artisanScore.count(),
+        this.prisma.artisanScore.findMany({
+          orderBy: { compositeScore: 'desc' },
+          skip,
+          take,
+          include: {
+            artisan: {
+              select: {
+                userId: true,
+                brandName: true,
+                businessName: true,
+                category: true,
+                status: true,
+                rating: true,
+                user: { select: { name: true, email: true, avatarUrl: true } },
+              },
             },
           },
-        },
-      }),
-    ]);
-    return {
-      total,
-      page: Math.max(page, 1),
-      pageSize: take,
-      items: rows.map((r) => ({
-        artisanId: r.artisanId,
-        name:
-          r.artisan.brandName ||
-          r.artisan.businessName ||
-          r.artisan.user.name,
-        email: r.artisan.user.email,
-        avatarUrl: r.artisan.user.avatarUrl,
-        category: r.artisan.category,
-        status: r.artisan.status,
-        publicRating: r.artisan.rating,
-        orderCompletionRate: r.orderCompletionRate,
-        avgResponseTimeHrs: r.avgResponseTimeHrs,
-        reviewQualityScore: r.reviewQualityScore,
-        activityScore: r.activityScore,
-        compositeScore: r.compositeScore,
-        lastCalculatedAt: r.lastCalculatedAt,
-      })),
-    };
+        }),
+      ]);
+      return {
+        total,
+        page: Math.max(page, 1),
+        pageSize: take,
+        items: rows.map((r) => ({
+          artisanId: r.artisanId,
+          name:
+            r.artisan?.brandName ||
+            r.artisan?.businessName ||
+            r.artisan?.user?.name ||
+            `Artisan #${r.artisanId}`,
+          email: r.artisan?.user?.email ?? null,
+          avatarUrl: r.artisan?.user?.avatarUrl ?? null,
+          category: r.artisan?.category ?? null,
+          status: r.artisan?.status ?? null,
+          publicRating: r.artisan?.rating ?? null,
+          orderCompletionRate: r.orderCompletionRate,
+          avgResponseTimeHrs: r.avgResponseTimeHrs,
+          reviewQualityScore: r.reviewQualityScore,
+          activityScore: r.activityScore,
+          compositeScore: r.compositeScore,
+          lastCalculatedAt: r.lastCalculatedAt,
+        })),
+      };
+    } catch (error) {
+      console.error('GET /admin/artisans/scores error:', error);
+      throw error;
+    }
   }
 
   async getScore(artisanId: number) {

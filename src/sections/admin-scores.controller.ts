@@ -15,6 +15,10 @@ import { ArtisanScoringService } from '../scoring/artisan-scoring.service';
  * Mounted on `admin` (not `admin/artisans`) so static `artisans/scores`
  * is registered as a concrete path and is not swallowed by
  * existing `GET /admin/artisans/:id`.
+ *
+ * This controller must be registered in AdminModule *before*
+ * AdminController so Express matches `/artisans/scores` ahead of
+ * `/artisans/:id`.
  */
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)

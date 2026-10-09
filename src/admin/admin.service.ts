@@ -34,7 +34,7 @@ export class AdminService {
       latestScore,
     ] = await Promise.all([
       this.prisma.user.count(),
-      this.prisma.artisanProfile.count(),
+      this.prisma.artisanProfile.count({ where: { status: { not: 'deleted' } } }),
       this.prisma.artisanProfile.count({ where: { status: 'pending' } }),
       this.prisma.artisanProfile.count({ where: { status: 'approved' } }),
       this.prisma.artisanProfile.count({ where: { status: 'rejected' } }),
@@ -89,7 +89,10 @@ export class AdminService {
 
   async listArtisans(page: number, pageSize: number, status?: string) {
     const skip = (page - 1) * pageSize;
-    const where = status ? { status } : {};
+    // Soft-deleted artisans (status=deleted) are hidden unless explicitly requested
+    const where = status
+      ? { status }
+      : { status: { not: 'deleted' } };
     const [totalItems, items] = await Promise.all([
       this.prisma.artisanProfile.count({ where }),
       this.prisma.artisanProfile.findMany({
@@ -125,7 +128,7 @@ export class AdminService {
       where: { userId: id },
       include: { user: true },
     });
-    if (!profile) {
+    if (!profile || profile.status === 'deleted') {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
 
@@ -198,6 +201,11 @@ export class AdminService {
       throw new BadRequestException({ message: 'Invalid status', code: 'VALIDATION_ERROR' });
     }
 
+    const existing = await this.prisma.artisanProfile.findUnique({ where: { userId: id } });
+    if (!existing || existing.status === 'deleted') {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
     const updated = await this.prisma.artisanProfile.update({
       where: { userId: id },
       data: { status, rejectionReason: reason ?? null },
@@ -211,6 +219,94 @@ export class AdminService {
       brandName: updated.brandName,
       email: updated.user.email,
     };
+  }
+
+  /**
+   * Permanently remove an artisan from marketplace surfaces.
+   * Soft-deletes their products (deletedAt) and marks the profile status=deleted
+   * so order history snapshots stay intact. Suspends the linked user login.
+   */
+  async removeArtisan(artisanUserId: number, adminUserId: number, reason?: string) {
+    if (artisanUserId === adminUserId) {
+      throw new BadRequestException({
+        message: 'You cannot delete your own account from this endpoint.',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const profile = await this.prisma.artisanProfile.findUnique({
+      where: { userId: artisanUserId },
+      include: {
+        user: { include: { roles: { include: { role: true } } } },
+      },
+    });
+    if (!profile || profile.status === 'deleted') {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    if (profile.user.roles.some((r) => r.role.name === 'admin')) {
+      throw new BadRequestException({
+        message: 'Admin accounts cannot be deleted from the portal.',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const activeProducts = await this.prisma.product.findMany({
+      where: { providerId: artisanUserId, ...activeProductWhere },
+      select: { id: true, name: true },
+    });
+    const productIds = activeProducts.map((p) => p.id);
+    const now = new Date();
+    const note = reason?.trim() || null;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (productIds.length > 0) {
+        await tx.wishlistItem.deleteMany({ where: { productId: { in: productIds } } });
+        await tx.productReview.deleteMany({ where: { productId: { in: productIds } } });
+        await tx.product.updateMany({
+          where: { id: { in: productIds } },
+          data: { deletedAt: now },
+        });
+      }
+
+      await tx.artisanProfile.update({
+        where: { userId: artisanUserId },
+        data: {
+          status: 'deleted',
+          rejectionReason: note,
+          featured: false,
+          verified: false,
+          rating: 0,
+          reviewCount: 0,
+        },
+      });
+
+      await tx.user.update({
+        where: { id: artisanUserId },
+        data: { status: 'suspended' },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          action: 'artisan_removed',
+          adminUserId,
+          targetType: 'artisan',
+          targetId: artisanUserId,
+          reason: note,
+          metadata: {
+            brandName: profile.brandName,
+            businessName: profile.businessName,
+            email: profile.user.email,
+            productsSoftDeleted: productIds.length,
+            productIds,
+          },
+        },
+      });
+    });
+
+    for (const id of productIds) {
+      this.cart.purgeProductFromAllCarts(id);
+    }
   }
 
   async listProducts(page: number, pageSize: number, status?: string) {

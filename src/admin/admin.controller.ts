@@ -62,6 +62,17 @@ export class AdminController {
     return this.admin.patchArtisanStatus(id, body.status, body.reason);
   }
 
+  @Delete('artisans/:id')
+  @HttpCode(204)
+  async removeArtisan(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('reason') reason?: string,
+  ) {
+    const user = req.user as AccessTokenPayload;
+    await this.admin.removeArtisan(id, user.sub, reason);
+  }
+
   @Get('products')
   listProducts(
     @Query('page') page?: string,

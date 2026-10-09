@@ -147,8 +147,14 @@ export class ArtisanScoringService {
 
   async listScores(page = 1, pageSize = 50) {
     try {
-      const take = Math.min(Math.max(pageSize, 1), 100);
-      const skip = (Math.max(page, 1) - 1) * take;
+      const pageNum = Number.isFinite(Number(page))
+        ? Math.max(Number(page), 1)
+        : 1;
+      const sizeNum = Number.isFinite(Number(pageSize))
+        ? Number(pageSize)
+        : 50;
+      const take = Math.min(Math.max(sizeNum, 1), 100);
+      const skip = (pageNum - 1) * take;
       const [total, rows] = await Promise.all([
         this.prisma.artisanScore.count(),
         this.prisma.artisanScore.findMany({
@@ -172,7 +178,7 @@ export class ArtisanScoringService {
       ]);
       return {
         total,
-        page: Math.max(page, 1),
+        page: pageNum,
         pageSize: take,
         items: rows.map((r) => ({
           artisanId: r.artisanId,

@@ -24,6 +24,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SearchModule } from './search/search.module';
 import { SupportModule } from './support/support.module';
+import { DisputesModule } from './disputes/disputes.module';
 import { CustomizationModule } from './customization/customization.module';
 import { AdminModule } from './admin/admin.module';
 import { MetaModule } from './meta/meta.module';
@@ -66,6 +67,7 @@ import { EmailModule } from './email/email.module';
     PaymentsModule,
     SearchModule,
     SupportModule,
+    DisputesModule,
     CustomizationModule,
     AdminModule,
     MetaModule,

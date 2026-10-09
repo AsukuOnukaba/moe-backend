@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
@@ -17,6 +17,7 @@ export class PreferencesController {
 
   // Spec says POST to create/update; keep idempotent.
   @UseGuards(JwtAuthGuard)
+  @Post()
   @Patch()
   upsert(@Req() req: Request, @Body() body: any) {
     const user = req.user as AccessTokenPayload;

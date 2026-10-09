@@ -8,10 +8,15 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import { PrismaService } from '../database/prisma.service';
-import type { AccessTokenPayload, MoeRole, RefreshTokenPayload } from './types/jwt-payload';
+import { EmailService } from '../email/email.service';
+import type {
+  AccessTokenPayload,
+  MoeRole,
+  RefreshTokenPayload,
+} from './types/jwt-payload';
 import type { ErrorCode } from '../common/errors/error-codes';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -46,7 +51,12 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly email: EmailService,
   ) {}
+
+  private hashResetToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
 
   private accessExpiresIn(): string {
     return this.config.get<string>('JWT_ACCESS_EXPIRES_IN', '20m');
@@ -149,9 +159,9 @@ export class AuthService {
     });
     if (existing) {
       throw new ConflictException({
-        message: 'Email already in use',
+        message: 'Email or Password already in use',
         code: 'VALIDATION_ERROR' satisfies ErrorCode,
-        errors: { email: ['Email already in use'] },
+        errors: { email: ['Email or Password already in use'] },
       });
     }
 
@@ -650,6 +660,96 @@ export class AuthService {
       where: { id: userId },
       data: { passwordHash: hash },
     });
+
+    return { message: 'Password updated successfully' };
+  }
+
+  /**
+   * Always returns the same message — never reveals whether the email exists.
+   */
+  async forgotPassword(email: string) {
+    const normalized = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalized } });
+
+    if (user) {
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = this.hashResetToken(rawToken);
+      const expires = nowPlusMs(15 * 60_000);
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpires: expires,
+        },
+      });
+
+      const frontend =
+        this.config.get<string>('FRONTEND_URL')?.trim() ||
+        'https://moe-africa-mvp.vercel.app';
+      const resetUrl = `${frontend.replace(/\/$/, '')}/auth/reset-password?token=${rawToken}`;
+
+      await this.email.send({
+        to: user.email,
+        subject: 'Reset your MOE Africa password',
+        html: `
+          <p>Hi ${user.name || 'there'},</p>
+          <p>We received a request to reset your password. This link expires in 15 minutes.</p>
+          <p><a href="${resetUrl}">Reset your password</a></p>
+          <p>If you did not request this, you can ignore this email.</p>
+          <p>— MOE Africa</p>
+        `,
+      });
+    }
+
+    return { message: 'Reset link sent if account exists' };
+  }
+
+  async validateResetToken(token: string) {
+    const tokenHash = this.hashResetToken(token);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpires: { gt: new Date() },
+      },
+      select: { id: true, email: true },
+    });
+    if (!user) {
+      throw new BadRequestException({
+        message: 'Reset link is invalid or expired',
+        code: 'VALIDATION_ERROR' satisfies ErrorCode,
+      });
+    }
+    return { valid: true, email: user.email };
+  }
+
+  async resetPasswordWithToken(token: string, newPassword: string) {
+    const tokenHash = this.hashResetToken(token);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpires: { gt: new Date() },
+      },
+    });
+    if (!user) {
+      throw new BadRequestException({
+        message: 'Reset link is invalid or expired',
+        code: 'VALIDATION_ERROR' satisfies ErrorCode,
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetTokenHash: null,
+        passwordResetExpires: null,
+      },
+    });
+
+    // Invalidate existing sessions after a password reset.
+    await this.logoutAll(user.id);
 
     return { message: 'Password updated successfully' };
   }

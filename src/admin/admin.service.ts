@@ -7,6 +7,12 @@ import { CartService } from '../customers/cart.service';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OrdersService } from '../orders/orders.service';
+import { EmailService } from '../email/email.service';
+import { ArtisanVerificationService } from '../artisans/artisan-verification.service';
+import { normalizeProductCategory } from '../common/product-categories';
+import { toStringList } from '../common/string-list';
+import type { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
+import type { CreateAdminProductDto } from './dto/create-admin-product.dto';
 
 @Injectable()
 export class AdminService {
@@ -15,7 +21,19 @@ export class AdminService {
     private readonly orders: OrdersService,
     private readonly notifications: NotificationsService,
     private readonly cart: CartService,
+    private readonly email: EmailService,
+    private readonly verification: ArtisanVerificationService,
   ) {}
+
+  private splitCustomerName(fullName: string) {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return { firstName: 'Customer', lastName: '' };
+    if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+    return {
+      firstName: parts[0],
+      lastName: parts.slice(1).join(' '),
+    };
+  }
 
   async dashboard() {
     const [
@@ -132,9 +150,14 @@ export class AdminService {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
 
-    const [productCount, orderCount] = await Promise.all([
+    const [productCount, orderCount, reviewRows] = await Promise.all([
       this.prisma.product.count({ where: { providerId: id, ...activeProductWhere } }),
       this.prisma.order.count({ where: { providerId: id } }),
+      this.prisma.artisanReview.findMany({
+        where: { artisanId: id },
+        include: { customer: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
 
     const { passwordHash: _, ...user } = profile.user;
@@ -193,11 +216,237 @@ export class AdminService {
       },
       productCount,
       orderCount,
+      reviews: reviewRows.map((r) => {
+        const names = this.splitCustomerName(r.customer.name);
+        return {
+          id: r.id,
+          rating: r.rating,
+          comment: r.comment,
+          customerFirstName: names.firstName,
+          customerLastName: names.lastName,
+          createdAt: r.createdAt.toISOString(),
+        };
+      }),
     };
   }
 
-  async patchArtisanStatus(id: number, status: 'approved' | 'rejected', reason?: string) {
-    if (!['approved', 'rejected'].includes(status)) {
+  async createArtisan(dto: CreateAdminArtisanDto) {
+    const email = dto.email.toLowerCase().trim();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      throw new BadRequestException({
+        message: 'Email already in use',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const password = dto.password;
+    const passwordHash = await bcrypt.hash(password, 12);
+    const fullName = `${dto.firstName.trim()} ${dto.lastName.trim()}`.trim();
+
+    const user = await this.prisma.user.create({
+      data: {
+        name: fullName,
+        email,
+        passwordHash,
+        status: 'active',
+      },
+    });
+
+    await this.prisma.role.upsert({
+      where: { name: 'artisan' },
+      update: {},
+      create: { name: 'artisan' },
+    });
+    const roleRow = await this.prisma.role.findUnique({ where: { name: 'artisan' } });
+    if (roleRow) {
+      await this.prisma.userRole.create({
+        data: { userId: user.id, roleId: roleRow.id },
+      });
+    }
+
+    const profile = await this.prisma.artisanProfile.create({
+      data: {
+        userId: user.id,
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        brandName: dto.businessName.trim(),
+        businessName: dto.businessName.trim(),
+        country: dto.country?.trim() || null,
+        state: dto.state?.trim() || null,
+        city: dto.city?.trim() || null,
+        serviceCategories: toStringList(dto.serviceCategories ?? []),
+        status: 'pending',
+      },
+    });
+
+    await this.email.sendArtisanWelcome({
+      email,
+      firstName: dto.firstName.trim(),
+      temporaryPassword: password,
+    });
+
+    const { passwordHash: _, ...safeUser } = user;
+    return {
+      user: {
+        ...safeUser,
+        createdAt: safeUser.createdAt.toISOString(),
+        updatedAt: safeUser.updatedAt.toISOString(),
+      },
+      artisanProfile: {
+        userId: profile.userId,
+        status: profile.status,
+        businessName: profile.businessName,
+        brandName: profile.brandName,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        country: profile.country,
+        state: profile.state,
+        city: profile.city,
+        serviceCategories: profile.serviceCategories,
+      },
+    };
+  }
+
+  async createProduct(dto: CreateAdminProductDto) {
+    const artisan = await this.prisma.artisanProfile.findUnique({
+      where: { userId: dto.artisanId },
+      include: { user: true },
+    });
+    if (!artisan || artisan.status === 'deleted') {
+      throw new NotFoundException({
+        message: 'Artisan not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    const price =
+      dto.priceMin ?? dto.price ?? 0;
+
+    const created = await this.prisma.product.create({
+      data: {
+        name: dto.name.trim(),
+        description: dto.description?.trim() ?? null,
+        category: dto.category ? normalizeProductCategory(dto.category) : null,
+        price,
+        originalPrice: dto.priceMax ?? null,
+        currency: dto.currency ?? 'NGN',
+        images: dto.images ?? [],
+        materials: dto.materials ?? null,
+        tags: dto.tags ?? null,
+        estimatedDelivery: dto.estimatedDelivery ?? null,
+        estimatedDeliveryDays: dto.estimatedDeliveryDays ?? 7,
+        providerId: dto.artisanId,
+        artisanId: dto.artisanId,
+        status: 'approved',
+      },
+    });
+
+    return productToDto(created);
+  }
+
+  async listMessages(query: Record<string, unknown>) {
+    const page = Math.max(1, Number(query?.page ?? 1));
+    const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 50)));
+
+    const [conversations, contacts] = await Promise.all([
+      this.prisma.conversation.findMany({
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          provider: { include: { user: { select: { name: true } } } },
+        },
+        orderBy: { lastMessageTime: 'desc' },
+        take: 500,
+      }),
+      this.prisma.contactMessage.findMany({
+        where: { source: 'contact_us' },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }),
+    ]);
+
+    type Row = {
+      kind: 'conversation' | 'contact_us';
+      id: string;
+      createdAt: string;
+      payload: Record<string, unknown>;
+    };
+
+    const merged: Row[] = [
+      ...conversations.map((c) => ({
+        kind: 'conversation' as const,
+        id: `conversation-${c.id}`,
+        createdAt: (c.lastMessageTime ?? c.createdAt).toISOString(),
+        payload: {
+          source: 'conversation',
+          conversationId: c.id,
+          customerId: c.customerId,
+          customerName: c.customer.name,
+          customerEmail: c.customer.email,
+          providerId: c.providerId,
+          providerName: c.provider.user?.name ?? c.provider.brandName,
+          status: c.status,
+          lastMessage: c.lastMessage,
+          lastMessageTime: c.lastMessageTime?.toISOString() ?? null,
+        },
+      })),
+      ...contacts.map((m) => ({
+        kind: 'contact_us' as const,
+        id: `contact-${m.id}`,
+        createdAt: m.createdAt.toISOString(),
+        payload: {
+          source: 'contact_us',
+          contactMessageId: m.id,
+          senderName: m.senderName,
+          senderEmail: m.senderEmail,
+          subject: m.subject,
+          message: m.message,
+          isRead: m.isRead,
+        },
+      })),
+    ].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    const totalItems = merged.length;
+    const skip = (page - 1) * pageSize;
+    const pageItems = merged.slice(skip, skip + pageSize);
+
+    return {
+      data: pageItems.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        createdAt: row.createdAt,
+        ...row.payload,
+      })),
+      pagination: {
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+        totalItems,
+      },
+    };
+  }
+
+  listArtisanDocuments(artisanId: number) {
+    return this.verification.listForAdmin(artisanId);
+  }
+
+  patchArtisanDocument(
+    artisanId: number,
+    docId: number,
+    body: { status?: string; notes?: string },
+  ) {
+    return this.verification.patchDocumentStatus(artisanId, docId, body);
+  }
+
+  async patchArtisanStatus(
+    id: number,
+    status: 'approved' | 'rejected' | 'pending',
+    reason?: string,
+  ) {
+    if (!['approved', 'rejected', 'pending'].includes(status)) {
       throw new BadRequestException({ message: 'Invalid status', code: 'VALIDATION_ERROR' });
     }
 
@@ -210,6 +459,31 @@ export class AdminService {
       where: { userId: id },
       data: { status, rejectionReason: reason ?? null },
       include: { user: true },
+    });
+
+    await this.notifications.notifyArtisanAccountStatus({
+      userId: updated.userId,
+      status,
+      brandName: updated.brandName,
+      reason: reason ?? null,
+    });
+
+    const statusLabel =
+      status === 'approved'
+        ? 'approved'
+        : status === 'rejected'
+          ? 'not approved'
+          : status;
+    const reasonLine = reason?.trim() ? `<p>Reason: ${reason.trim()}</p>` : '';
+    await this.email.send({
+      to: updated.user.email,
+      subject: `MOE Africa artisan account ${statusLabel}`,
+      html: `
+        <p>Hi ${updated.user.name},</p>
+        <p>Your artisan account (${updated.brandName ?? updated.user.name}) has been <strong>${statusLabel}</strong>.</p>
+        ${reasonLine}
+        <p>— MOE Africa</p>
+      `,
     });
 
     return {

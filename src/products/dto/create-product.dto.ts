@@ -4,7 +4,10 @@ import {
   IsOptional,
   IsArray,
   IsNotEmpty,
+  Min,
+  Max,
 } from 'class-validator';
+import { ValidatePriceRange } from '../../common/validators/price-range.validator';
 
 export class CreateProductDto {
   @IsString()
@@ -20,10 +23,19 @@ export class CreateProductDto {
   category: string;
 
   @IsNumber()
+  @Min(100, { message: 'Minimum price must be at least ₦100' })
   priceMin: number;
 
   @IsNumber()
+  @Max(10_000_000, {
+    message: 'Maximum price cannot exceed ₦10,000,000',
+  })
+  @ValidatePriceRange()
   priceMax: number;
+
+  @IsString()
+  @IsNotEmpty()
+  estimatedDelivery: string;
 
   @IsOptional()
   @IsString()

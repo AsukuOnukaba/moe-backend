@@ -17,6 +17,13 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get(':id/tracking')
+  tracking(@Req() req: Request, @Param('id') id: string) {
+    const user = req.user as AccessTokenPayload;
+    return this.orders.getTracking(user, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   get(@Req() req: Request, @Param('id') id: string) {
     const user = req.user as AccessTokenPayload;
@@ -28,6 +35,13 @@ export class OrdersController {
   create(@Req() req: Request, @Body() body: CreateOrderDto) {
     const user = req.user as AccessTokenPayload;
     return this.orders.create(user, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/status')
+  patchStatus(@Req() req: Request, @Param('id') id: string, @Body() body: any) {
+    const user = req.user as AccessTokenPayload;
+    return this.orders.patchStatus(user, id, body);
   }
 
   @UseGuards(JwtAuthGuard)

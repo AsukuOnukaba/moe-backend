@@ -8,6 +8,8 @@ import { MessagingModule } from '../messaging/messaging.module';
 import { CategoriesModule } from '../categories/categories.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { AdminScoresController } from '../sections/admin-scores.controller';
+import { SupportModule } from '../support/support.module';
+import { ArtisansModule } from '../artisans/artisans.module';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { AdminScoresController } from '../sections/admin-scores.controller';
     MessagingModule,
     CategoriesModule,
     ScoringModule,
+    SupportModule,
+    ArtisansModule,
   ],
   // AdminScoresController MUST be registered before AdminController so
   // GET admin/artisans/scores is not swallowed by GET admin/artisans/:id.

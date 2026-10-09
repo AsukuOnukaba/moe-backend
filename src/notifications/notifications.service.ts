@@ -8,7 +8,8 @@ export type NotificationType =
   | 'message'
   | 'promotion'
   | 'system'
-  | 'product_removed_by_admin';
+  | 'product_removed_by_admin'
+  | 'account_status';
 
 export type CreateNotificationInput = {
   userId: number;
@@ -124,6 +125,45 @@ export class NotificationsService {
       body: `Order #${orderId} is now ${humanStatus}.`,
       link: `/orders/${orderId}`,
       idempotencyKey: `order:${orderId}:status:${newStatus.trim().toLowerCase()}`,
+    });
+  }
+
+  async notifyArtisanAccountStatus(input: {
+    userId: number;
+    status: 'approved' | 'rejected' | 'pending';
+    brandName?: string | null;
+    reason?: string | null;
+  }) {
+    const reasonSuffix = input.reason?.trim()
+      ? ` Reason: ${input.reason.trim()}`
+      : '';
+
+    const copy: Record<
+      'approved' | 'rejected' | 'pending',
+      { title: string; body: string }
+    > = {
+      approved: {
+        title: 'Account approved',
+        body: 'Your artisan account has been approved. You can now list products on MOE Africa.',
+      },
+      rejected: {
+        title: 'Account not approved',
+        body: `Your artisan account application was not approved. Please contact support for more information.${reasonSuffix}`,
+      },
+      pending: {
+        title: 'Account under review',
+        body: 'Your artisan account is under review. We will notify you once a decision has been made.',
+      },
+    };
+
+    const { title, body } = copy[input.status];
+    return this.create({
+      userId: input.userId,
+      type: 'account_status',
+      title,
+      body,
+      link: '/artisan/dashboard',
+      idempotencyKey: `artisan:${input.userId}:status:${input.status}:${Date.now()}`,
     });
   }
 

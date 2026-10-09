@@ -11,3 +11,9 @@ export type RefreshTokenPayload = {
   jti: string;
 };
 
+export type PasswordResetTokenPayload = {
+  sub: number;
+  typ: 'password_reset';
+  jti: string;
+};
+

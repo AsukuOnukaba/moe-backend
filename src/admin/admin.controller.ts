@@ -21,6 +21,9 @@ import { ConversationsService } from '../messaging/conversations.service';
 import { CategoriesService } from '../categories/categories.service';
 import { CreateCategoryDto } from '../categories/dto/create-category.dto';
 import { UpdateCategoryDto } from '../categories/dto/update-category.dto';
+import { BulkDeleteCategoriesDto } from './dto/bulk-delete-categories.dto';
+import { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
+import { CreateAdminProductDto } from './dto/create-admin-product.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -36,6 +39,19 @@ export class AdminController {
     return this.admin.dashboard();
   }
 
+  @Get('messages')
+  listMessages(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.admin.listMessages({ page, pageSize });
+  }
+
+  @Post('artisans')
+  createArtisan(@Body() dto: CreateAdminArtisanDto) {
+    return this.admin.createArtisan(dto);
+  }
+
   @Get('artisans')
   listArtisans(
     @Query('page') page?: string,
@@ -47,6 +63,20 @@ export class AdminController {
       Math.max(1, Math.min(100, Number(pageSize ?? 20))),
       status,
     );
+  }
+
+  @Get('artisans/:id/documents')
+  listArtisanDocuments(@Param('id', ParseIntPipe) id: number) {
+    return this.admin.listArtisanDocuments(id);
+  }
+
+  @Patch('artisans/:id/documents/:docId')
+  patchArtisanDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('docId', ParseIntPipe) docId: number,
+    @Body() body: { status?: string; notes?: string },
+  ) {
+    return this.admin.patchArtisanDocument(id, docId, body);
   }
 
   @Get('artisans/:id')
@@ -71,6 +101,11 @@ export class AdminController {
   ) {
     const user = req.user as AccessTokenPayload;
     await this.admin.removeArtisan(id, user.sub, reason);
+  }
+
+  @Post('products')
+  createProduct(@Body() dto: CreateAdminProductDto) {
+    return this.admin.createProduct(dto);
   }
 
   @Get('products')
@@ -234,6 +269,12 @@ export class AdminController {
   @Patch('categories/:id')
   updateCategory(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
     return this.categories.update(id, dto);
+  }
+
+  @Delete('categories')
+  @HttpCode(200)
+  async bulkRemoveCategories(@Body() dto: BulkDeleteCategoriesDto) {
+    return this.categories.bulkRemove(dto.ids);
   }
 
   @Delete('categories/:id')

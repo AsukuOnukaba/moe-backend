@@ -56,7 +56,15 @@ export function createMulterOptions(subfolder: string): multer.Options {
     storage: new LazyCloudinaryStorage(subfolder),
     limits: { fileSize: 2 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+      const allowed =
+        subfolder === 'verification'
+          ? [
+              'image/jpeg',
+              'image/png',
+              'image/webp',
+              'application/pdf',
+            ]
+          : ['image/jpeg', 'image/png', 'image/webp'];
       if (!allowed.includes(file.mimetype)) {
         return cb(
           new BadRequestException(

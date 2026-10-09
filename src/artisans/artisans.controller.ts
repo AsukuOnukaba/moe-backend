@@ -18,6 +18,7 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { ArtisanReviewsService } from './artisan-reviews.service';
+import { ArtisanVerificationService } from './artisan-verification.service';
 import { ArtisansService } from './artisans.service';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
@@ -29,7 +30,37 @@ export class ArtisansController {
   constructor(
     private readonly artisans: ArtisansService,
     private readonly reviews: ArtisanReviewsService,
+    private readonly verification: ArtisanVerificationService,
   ) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Get('verification/documents')
+  listMyVerificationDocuments(@Req() req: Request) {
+    return this.verification.listMine(req.user as AccessTokenPayload);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('verification/documents')
+  @UseInterceptors(FileInterceptor('file', createMulterOptions('verification')))
+  async uploadVerificationDocument(
+    @Req() req: Request,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { fileType?: string; type?: string },
+  ) {
+    const user = req.user as AccessTokenPayload;
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const fileType = (body?.fileType ?? body?.type)?.trim();
+    if (!fileType) {
+      throw new BadRequestException('fileType is required');
+    }
+    return this.verification.uploadDocument(
+      user,
+      fileType,
+      cloudinaryUrl(file),
+    );
+  }
 
   @Get('filter-meta')
   filterMeta() {

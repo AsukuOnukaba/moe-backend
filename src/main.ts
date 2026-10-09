@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { MoeHttpExceptionFilter } from './common/filters/http-exception.filter';
+import { TrimStringsPipe } from './common/pipes/trim-strings.pipe';
 import * as path from 'path';
 
 async function bootstrap() {
@@ -29,6 +30,7 @@ async function bootstrap() {
   });
 
   app.useGlobalPipes(
+    new TrimStringsPipe(),
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,

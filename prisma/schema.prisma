@@ -17,6 +17,8 @@ model User {
   googleId                  String?   @unique
   clerkId                   String?   @unique
   status                    String    @default("active")
+  passwordResetTokenHash    String?
+  passwordResetExpires      DateTime?
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
@@ -107,6 +109,7 @@ model ArtisanProfile {
   metaDescription String?
 
   providerConversations Conversation[] @relation("ProviderConversations")
+  verificationDocuments ArtisanVerificationDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -276,12 +279,57 @@ model Order {
   shippingCountry      String?
   shippingPostalCode   String?
 
+  estimatedDelivery String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  statusHistory OrderStatusHistory[]
 
   @@index([customerId])
   @@index([productId])
   @@index([providerId])
+}
+
+model OrderStatusHistory {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    String
+  changedBy Int?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([orderId, createdAt])
+}
+
+model ContactMessage {
+  id          Int      @id @default(autoincrement())
+  senderName  String
+  senderEmail String
+  message     String
+  subject     String?
+  createdAt   DateTime @default(now())
+  isRead      Boolean  @default(false)
+  source      String   @default("contact_us")
+
+  @@index([source, createdAt])
+  @@index([isRead])
+}
+
+model ArtisanVerificationDocument {
+  id        Int      @id @default(autoincrement())
+  artisanId Int
+  artisan   ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
+  fileType  String
+  fileUrl   String
+  status    String   @default("pending")
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([artisanId])
 }
 
 model UserPreference {

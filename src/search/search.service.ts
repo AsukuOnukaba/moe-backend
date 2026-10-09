@@ -43,6 +43,10 @@ function productRelevance(p: any, q: string): number {
   const cat = (p.category ?? '').toLowerCase();
   const desc = (p.description ?? '').toLowerCase();
   const tags = (p.tags ?? '').toLowerCase();
+  const materials = (p.materials ?? '').toLowerCase();
+  const styleTags = splitCsv(p.styleTags)
+    .join(' ')
+    .toLowerCase();
   const kwTerms = (p.keywords ?? []).map((k: any) =>
     (k.keyword?.term ?? k.term ?? '').toLowerCase(),
   );
@@ -52,7 +56,8 @@ function productRelevance(p: any, q: string): number {
   if (kwTerms.some((t: string) => t === q)) return 500;
   if (kwTerms.some((t: string) => t.includes(q))) return 420;
   if (cat === q || cat.includes(q)) return 350;
-  if (tags.includes(q)) return 250;
+  if (tags.includes(q) || styleTags.includes(q)) return 250;
+  if (materials.includes(q)) return 200;
   if (desc.includes(q)) return 100;
   return 0;
 }
@@ -64,6 +69,13 @@ function providerRelevance(u: any, q: string): number {
   const about = (ap?.about ?? ap?.description ?? '').toLowerCase();
   const cats = toStringList(ap?.serviceCategories).map((c) => c.toLowerCase());
   const category = (ap?.category ?? '').toLowerCase();
+  const city = (ap?.city ?? '').toLowerCase();
+  const state = (ap?.state ?? '').toLowerCase();
+  const country = (ap?.country ?? '').toLowerCase();
+  const location = (ap?.location ?? '').toLowerCase();
+  const styleTags = splitCsv(ap?.styleTags)
+    .join(' ')
+    .toLowerCase();
   const kwTerms = (ap?.keywords ?? []).map((k: any) =>
     (k.keyword?.term ?? '').toLowerCase(),
   );
@@ -72,7 +84,19 @@ function providerRelevance(u: any, q: string): number {
   if (brand.includes(q) || business.includes(q)) return 600;
   if (kwTerms.some((t: string) => t === q)) return 500;
   if (kwTerms.some((t: string) => t.includes(q))) return 420;
-  if (category.includes(q) || cats.some((c) => c.includes(q))) return 350;
+  if (
+    category.includes(q) ||
+    cats.some((c) => c.includes(q)) ||
+    styleTags.includes(q)
+  )
+    return 350;
+  if (
+    city.includes(q) ||
+    state.includes(q) ||
+    country.includes(q) ||
+    location.includes(q)
+  )
+    return 280;
   if (about.includes(q)) return 100;
   return 0;
 }
@@ -110,11 +134,11 @@ export class SearchService {
               status: 'approved',
               ...activeProductWhere,
               OR: [
-                { name: { contains: query, mode: 'insensitive' } },
-                { description: { contains: query, mode: 'insensitive' } },
-                { materials: { contains: query, mode: 'insensitive' } },
-                { tags: { contains: query, mode: 'insensitive' } },
-                { category: { contains: query, mode: 'insensitive' } },
+                { name: { contains: qLower, mode: 'insensitive' } },
+                { description: { contains: qLower, mode: 'insensitive' } },
+                { materials: { contains: qLower, mode: 'insensitive' } },
+                { tags: { contains: qLower, mode: 'insensitive' } },
+                { category: { contains: qLower, mode: 'insensitive' } },
                 {
                   keywords: {
                     some: {
@@ -136,32 +160,60 @@ export class SearchService {
               roles: { some: { role: { name: 'artisan' } } },
               artisanProfile: { status: 'approved' },
               OR: [
-                { name: { contains: query, mode: 'insensitive' } },
-                { phone: { contains: query, mode: 'insensitive' } },
-                { email: { contains: query, mode: 'insensitive' } },
+                { name: { contains: qLower, mode: 'insensitive' } },
                 {
                   artisanProfile: {
-                    about: { contains: query, mode: 'insensitive' },
+                    brandName: { contains: qLower, mode: 'insensitive' },
                   },
                 },
                 {
                   artisanProfile: {
-                    brandName: { contains: query, mode: 'insensitive' },
+                    businessName: { contains: qLower, mode: 'insensitive' },
                   },
                 },
                 {
                   artisanProfile: {
-                    businessName: { contains: query, mode: 'insensitive' },
+                    about: { contains: qLower, mode: 'insensitive' },
                   },
                 },
                 {
                   artisanProfile: {
-                    description: { contains: query, mode: 'insensitive' },
+                    description: { contains: qLower, mode: 'insensitive' },
                   },
                 },
                 {
                   artisanProfile: {
-                    category: { contains: query, mode: 'insensitive' },
+                    category: { contains: qLower, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    city: { contains: qLower, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    state: { contains: qLower, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    country: { contains: qLower, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    location: { contains: qLower, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    styleTags: { contains: qLower, mode: 'insensitive' },
+                  },
+                },
+                {
+                  artisanProfile: {
+                    serviceCategories: { hasSome: [query] },
                   },
                 },
                 {

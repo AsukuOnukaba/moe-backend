@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -48,9 +49,36 @@ type Order = {
   paymentMethodId: string | null;
   paymentReference: string | null;
   paymentStatus: string;
+  estimatedDelivery: string | null;
+  artisanName: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['in_progress', 'cancelled'],
+  in_progress: ['ready', 'cancelled'],
+  ready: ['shipped', 'cancelled'],
+  shipped: ['delivered'],
+  delivered: [],
+  cancelled: [],
+  // legacy aliases still accepted as current status
+  approved: ['shipped', 'cancelled'],
+  rejected: ['cancelled'],
+};
+
+const VALID_ORDER_STATUSES = new Set([
+  'pending',
+  'confirmed',
+  'in_progress',
+  'ready',
+  'shipped',
+  'delivered',
+  'cancelled',
+  'approved',
+  'rejected',
+]);
 
 @Injectable()
 export class OrdersService {
@@ -140,6 +168,7 @@ export class OrdersService {
     paymentMethodId: string | null;
     paymentReference: string | null;
     paymentStatus: string;
+    estimatedDelivery: string | null;
     shippingAddress: unknown;
     shippingFirstName: string | null;
     shippingLastName: string | null;
@@ -175,9 +204,47 @@ export class OrdersService {
       paymentMethodId: dbOrder.paymentMethodId,
       paymentReference: dbOrder.paymentReference,
       paymentStatus: dbOrder.paymentStatus,
+      estimatedDelivery: dbOrder.estimatedDelivery,
+      artisanName: dbOrder.providerName,
       createdAt: dbOrder.createdAt.toISOString(),
       updatedAt: dbOrder.updatedAt.toISOString(),
     };
+  }
+
+  private assertStatusTransition(from: string, to: string) {
+    const allowed = ORDER_STATUS_TRANSITIONS[from] ?? [];
+    if (!allowed.includes(to)) {
+      throw new BadRequestException({
+        message: `Invalid status transition from "${from}" to "${to}"`,
+        code: 'VALIDATION_ERROR',
+      });
+    }
+  }
+
+  private async appendStatusHistory(
+    orderId: number,
+    status: string,
+    changedBy: number | null,
+    note?: string | null,
+  ) {
+    await this.prisma.orderStatusHistory.create({
+      data: {
+        orderId,
+        status,
+        changedBy,
+        note: note?.trim() || null,
+      },
+    });
+  }
+
+  private canAccessOrder(
+    user: AccessTokenPayload,
+    order: { customerId: number; providerId: number | null },
+  ) {
+    if (user.role === 'admin') return true;
+    if (order.customerId === user.sub) return true;
+    if (user.role === 'artisan' && order.providerId === user.sub) return true;
+    return false;
   }
 
   async list(user: AccessTokenPayload, query: Record<string, unknown>) {
@@ -211,8 +278,116 @@ export class OrdersService {
     const dbOrder = await this.prisma.order.findUnique({
       where: { id: Number(orderId) },
     });
-    if (!dbOrder || dbOrder.customerId !== user.sub) return null;
-    return this.toOrderResponse(dbOrder);
+    if (!dbOrder || !this.canAccessOrder(user, dbOrder)) return null;
+
+    let estimatedDelivery = dbOrder.estimatedDelivery;
+    if (!estimatedDelivery) {
+      const product = await this.prisma.product.findUnique({
+        where: { id: dbOrder.productId },
+        select: { estimatedDelivery: true, estimatedDeliveryDays: true },
+      });
+      estimatedDelivery =
+        product?.estimatedDelivery ??
+        (product?.estimatedDeliveryDays
+          ? `${product.estimatedDeliveryDays} days`
+          : null);
+    }
+
+    return {
+      ...this.toOrderResponse({ ...dbOrder, estimatedDelivery }),
+    };
+  }
+
+  async getTracking(user: AccessTokenPayload, orderId: string) {
+    const dbOrder = await this.prisma.order.findUnique({
+      where: { id: Number(orderId) },
+    });
+    if (!dbOrder || !this.canAccessOrder(user, dbOrder)) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    const history = await this.prisma.orderStatusHistory.findMany({
+      where: { orderId: dbOrder.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (history.length === 0) {
+      return {
+        orderId: dbOrder.id,
+        currentStatus: dbOrder.status,
+        history: [
+          {
+            status: dbOrder.status,
+            changedBy: null,
+            note: null,
+            createdAt: dbOrder.createdAt.toISOString(),
+          },
+        ],
+      };
+    }
+
+    return {
+      orderId: dbOrder.id,
+      currentStatus: dbOrder.status,
+      history: history.map((h) => ({
+        status: h.status,
+        changedBy: h.changedBy,
+        note: h.note,
+        createdAt: h.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  async patchStatus(
+    user: AccessTokenPayload,
+    orderId: string,
+    body: { status?: string; note?: string },
+  ) {
+    if (user.role !== 'admin' && user.role !== 'artisan') {
+      throw new ForbiddenException({
+        message: 'Forbidden',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    const id = Number(orderId);
+    const dbOrder = await this.prisma.order.findUnique({ where: { id } });
+    if (!dbOrder) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    if (user.role === 'artisan' && dbOrder.providerId !== user.sub) {
+      throw new ForbiddenException({
+        message: 'Forbidden',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    const nextStatus = body.status?.trim();
+    if (!nextStatus || !VALID_ORDER_STATUSES.has(nextStatus)) {
+      throw new BadRequestException({
+        message: 'Invalid status',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    this.assertStatusTransition(dbOrder.status, nextStatus);
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: { status: nextStatus },
+    });
+
+    await this.appendStatusHistory(id, nextStatus, user.sub, body.note);
+    await this.emitOrderTransitionNotifications(dbOrder, updated);
+
+    return this.toOrderResponse(updated);
   }
 
   async create(user: AccessTokenPayload, body: CreateOrderDto) {
@@ -365,8 +540,15 @@ export class OrdersService {
         paymentMethodId: resolvedPaymentMethodId,
         paymentReference,
         paymentStatus: paymentMethod === CheckoutPaymentMethod.COD ? 'unpaid' : 'unpaid',
+        estimatedDelivery:
+          product.estimatedDelivery ??
+          (product.estimatedDeliveryDays
+            ? `${product.estimatedDeliveryDays} days`
+            : null),
       },
     });
+
+    await this.appendStatusHistory(dbOrder.id, 'pending', customerId, null);
 
     if (body.saveCard && gatewayToken && !paymentMethodId) {
       const saved = await this.paymentMethods.createFromGateway({
@@ -595,10 +777,11 @@ export class OrdersService {
     'pending',
     'confirmed',
     'in_progress',
-    'approved',
+    'ready',
     'shipped',
     'delivered',
     'cancelled',
+    'approved',
     'rejected',
   ] as const;
 
@@ -610,6 +793,7 @@ export class OrdersService {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
 
+    let nextStatus: string | undefined;
     if (typeof body?.status === 'string') {
       const status = body.status.trim();
       if (!OrdersService.ADMIN_ORDER_STATUSES.includes(status as (typeof OrdersService.ADMIN_ORDER_STATUSES)[number])) {
@@ -618,6 +802,8 @@ export class OrdersService {
           code: 'VALIDATION_ERROR',
         });
       }
+      nextStatus = status;
+      this.assertStatusTransition(dbOrder.status, status);
     }
 
     if (typeof body?.paymentStatus === 'string') {
@@ -637,7 +823,7 @@ export class OrdersService {
     const updated = await this.prisma.order.update({
       where: { id: orderId },
       data: {
-        ...(typeof body?.status === 'string' ? { status: body.status.trim() } : {}),
+        ...(nextStatus ? { status: nextStatus } : {}),
         ...(typeof body?.paymentReference === 'string'
           ? { paymentReference: body.paymentReference }
           : {}),
@@ -648,6 +834,15 @@ export class OrdersService {
       },
     });
 
+    if (nextStatus) {
+      await this.appendStatusHistory(
+        orderId,
+        nextStatus,
+        null,
+        typeof body?.note === 'string' ? body.note : null,
+      );
+    }
+
     await this.emitOrderTransitionNotifications(dbOrder, updated);
 
     const customer = await this.prisma.user.findUnique({
@@ -655,9 +850,22 @@ export class OrdersService {
       select: { id: true, name: true, email: true, phone: true },
     });
 
+    let estimatedDelivery = updated.estimatedDelivery;
+    if (!estimatedDelivery) {
+      const product = await this.prisma.product.findUnique({
+        where: { id: updated.productId },
+        select: { estimatedDelivery: true, estimatedDeliveryDays: true },
+      });
+      estimatedDelivery =
+        product?.estimatedDelivery ??
+        (product?.estimatedDeliveryDays
+          ? `${product.estimatedDeliveryDays} days`
+          : null);
+    }
+
     return {
       orderNumber: this.formatOrderNumber(updated.id),
-      ...this.toOrderResponse(updated),
+      ...this.toOrderResponse({ ...updated, estimatedDelivery }),
       customer: customer
         ? {
             id: customer.id,

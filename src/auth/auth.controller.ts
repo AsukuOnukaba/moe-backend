@@ -5,6 +5,7 @@ import {
   Get,
   Post,
   Patch,
+  Query,
   Req,
   Res,
   UploadedFile,
@@ -13,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthLoginDto } from './dto/auth-login.dto';
@@ -22,6 +24,9 @@ import { AuthClerkVerifyDto } from './dto/auth-clerk-verify.dto';
 import { AuthProfilePatchDto } from './dto/auth-profile-patch.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { MoeThrottlerGuard } from '../common/guards/moe-throttler.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AccessTokenPayload } from './types/jwt-payload';
 import { ConfigService } from '@nestjs/config';
@@ -34,14 +39,39 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
+  @UseGuards(MoeThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   async register(@Body() dto: AuthRegisterDto) {
     return this.auth.register(dto);
   }
 
+  @UseGuards(MoeThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   async login(@Body() dto: AuthLoginDto) {
     return this.auth.login(dto);
+  }
+
+  @UseGuards(MoeThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 300_000 } })
+  @Post('forgot-password')
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Get('reset-password')
+  async validateResetToken(@Query('token') token?: string) {
+    if (!token?.trim()) {
+      throw new BadRequestException('Reset token is required');
+    }
+    return this.auth.validateResetToken(token.trim());
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetPasswordWithToken(dto.token, dto.newPassword);
   }
 
   @Get('google')

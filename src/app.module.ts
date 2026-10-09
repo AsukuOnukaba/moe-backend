@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { MoeThrottlerGuard } from './common/guards/moe-throttler.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { validateEnv } from './config/env.validation';
@@ -29,6 +32,7 @@ import { ScoringModule } from './scoring/scoring.module';
 import { SectionsModule } from './sections/sections.module';
 import { KeywordsModule } from './keywords/keywords.module';
 import { EventsModule } from './events/events.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -37,8 +41,16 @@ import { EventsModule } from './events/events.module';
       validate: validateEnv,
       expandVariables: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
     ScheduleModule.forRoot(),
     DatabaseModule,
+    EmailModule,
     AuthModule,
     UsersModule,
     ArtisansModule,
@@ -64,6 +76,12 @@ import { EventsModule } from './events/events.module';
     EventsModule,
   ],
   controllers: [AppController, HealthController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: MoeThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

@@ -81,7 +81,7 @@ export class CategoriesService {
       data: {
         slug,
         label: dto.label.trim(),
-        icon: dto.icon?.trim() || null,
+        icon: dto.icon?.trim() || 'Tag',
         sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
       },
     });
@@ -112,7 +112,7 @@ export class CategoriesService {
       where: { id },
       data: {
         ...(dto.label !== undefined ? { label: dto.label.trim() } : {}),
-        ...(dto.icon !== undefined ? { icon: dto.icon?.trim() || null } : {}),
+        ...(dto.icon !== undefined ? { icon: dto.icon?.trim() || 'Tag' } : {}),
         ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
       },
     });
@@ -129,23 +129,50 @@ export class CategoriesService {
       });
     }
 
-    if (category.isSeed) {
-      throw new ConflictException({
-        message: 'Seed categories cannot be deleted',
-        code: 'VALIDATION_ERROR',
-      });
-    }
-
-    const productCount = await this.countProductsForSlug(category.slug);
-    const artisanCount = await this.countArtisansForSlug(category.slug);
-    if (productCount > 0 || artisanCount > 0) {
-      throw new BadRequestException({
-        message: 'Category has active products or artisans and cannot be deleted.',
-        code: 'VALIDATION_ERROR',
-      });
-    }
-
+    await this.clearProductsForCategory(category);
     await this.prisma.category.delete({ where: { id } });
+  }
+
+  async bulkRemove(ids: string[]): Promise<{ deleted: number; clearedProducts: number }> {
+    const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    if (unique.length === 0) {
+      throw new BadRequestException({
+        message: 'ids must not be empty',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const categories = await this.prisma.category.findMany({
+      where: { id: { in: unique } },
+    });
+    if (categories.length === 0) {
+      throw new NotFoundException({
+        message: 'No matching categories found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    let clearedProducts = 0;
+    for (const category of categories) {
+      clearedProducts += await this.clearProductsForCategory(category);
+    }
+
+    const result = await this.prisma.category.deleteMany({
+      where: { id: { in: categories.map((c) => c.id) } },
+    });
+
+    return { deleted: result.count, clearedProducts };
+  }
+
+  private async clearProductsForCategory(category: Category): Promise<number> {
+    const result = await this.prisma.product.updateMany({
+      where: {
+        deletedAt: null,
+        OR: [{ category: category.slug }, { category: category.label }],
+      },
+      data: { category: null },
+    });
+    return result.count;
   }
 
   private async countProductsForSlug(slug: string): Promise<number> {

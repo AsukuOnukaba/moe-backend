@@ -3,14 +3,17 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
 import { PRODUCT_CATEGORIES } from '../../common/product-categories';
+import { ValidatePriceRange } from '../../common/validators/price-range.validator';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -22,22 +25,27 @@ export class CreateArtisanProductDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(100, { message: 'Minimum price must be at least ₦100' })
   price?: number;
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(100, { message: 'Minimum price must be at least ₦100' })
   priceMin?: number;
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Max(10_000_000, {
+    message: 'Maximum price cannot exceed ₦10,000,000',
+  })
+  @ValidatePriceRange()
   priceMax?: number;
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Max(10_000_000, {
+    message: 'Maximum price cannot exceed ₦10,000,000',
+  })
   originalPrice?: number | null;
 
   @IsOptional()
@@ -56,7 +64,6 @@ export class CreateArtisanProductDto {
   })
   category?: string | null;
 
-  // Comma-separated strings (backend stores as text)
   @IsOptional()
   @IsString()
   materials?: string | null;
@@ -85,10 +92,10 @@ export class CreateArtisanProductDto {
   @IsNumber()
   discountPercent?: number | null;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(50)
-  estimatedDelivery?: string | null;
+  estimatedDelivery!: string;
 
   @IsOptional()
   @IsInt()

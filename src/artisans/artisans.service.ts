@@ -156,7 +156,7 @@ export class ArtisansService {
       },
     });
 
-    await this.keywords.syncArtisanKeywords(userId, dto.keywords);
+    await this.keywords.reindexArtisanKeywords(userId, dto.keywords);
 
     // return same shape as getMe
     const u = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -252,7 +252,7 @@ export class ArtisansService {
       },
     });
 
-    await this.keywords.syncProductKeywords(created.id, dto.keywords);
+    await this.keywords.reindexProductKeywords(created.id, dto.keywords);
     const withKw = await this.prisma.product.findUnique({
       where: { id: created.id },
       include: { keywords: { include: { keyword: true } } },
@@ -332,7 +332,7 @@ export class ArtisansService {
       },
     });
 
-    await this.keywords.syncProductKeywords(productId, dto.keywords);
+    await this.keywords.reindexProductKeywords(productId, dto.keywords);
     const withKw = await this.prisma.product.findUnique({
       where: { id: productId },
       include: { keywords: { include: { keyword: true } } },

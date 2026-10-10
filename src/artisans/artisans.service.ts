@@ -584,6 +584,8 @@ export class ArtisansService {
       reviewCount: number;
       verified: boolean;
       featured: boolean;
+      customOrdersEnabled?: boolean;
+      isCustomOrderEligible?: boolean;
       metaTitle?: string | null;
       metaDescription?: string | null;
       keywords?: { keyword: { term: string } }[];
@@ -609,6 +611,10 @@ export class ArtisansService {
       verified: a.verified ?? false,
       featured: a.featured ?? false,
       productCount,
+      customOrdersEnabled: a.customOrdersEnabled ?? false,
+      // Public: eligibility only — never approvedBy/approvedAt.
+      isCustomOrderEligible:
+        a.isCustomOrderEligible ?? a.customOrdersEnabled ?? false,
       metaTitle: a.metaTitle ?? null,
       metaDescription: a.metaDescription ?? null,
       keywords: (a.keywords ?? []).map((k) => ({ term: k.keyword.term })),

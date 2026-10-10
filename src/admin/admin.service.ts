@@ -206,6 +206,12 @@ export class AdminService {
         rushOrderSurchargePercent: profile.rushOrderSurchargePercent,
         estimatedDeliveryDays: profile.estimatedDeliveryDays,
       },
+      isCustomOrderEligible:
+        profile.isCustomOrderEligible ?? profile.customOrdersEnabled ?? false,
+      customOrderApprovedAt: profile.customOrderApprovedAt
+        ? profile.customOrderApprovedAt.toISOString()
+        : null,
+      customOrderApprovedBy: profile.customOrderApprovedBy,
       user: {
         id: user.id,
         name: user.name,

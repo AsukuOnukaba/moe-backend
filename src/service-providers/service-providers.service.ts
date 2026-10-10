@@ -198,6 +198,7 @@ export class ServiceProvidersService {
       storeImageUrl: ap.storeImageUrl ?? null,
       coverImageUrl: ap.coverImageUrl ?? null,
       customOrdersEnabled: ap.customOrdersEnabled ?? false,
+      isCustomOrderEligible: ap.isCustomOrderEligible ?? ap.customOrdersEnabled ?? false,
       category: ap.category ?? null,
       location: ap.location ?? ap.city ?? null,
       styleTags: splitCsv(ap.styleTags),

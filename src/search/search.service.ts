@@ -26,6 +26,7 @@ function providerToDto(user: any, ap: any) {
     estimatedDeliveryDays: ap.estimatedDeliveryDays ?? 7,
     heroImage: ap.heroImage ?? null,
     customOrdersEnabled: ap.customOrdersEnabled ?? false,
+    isCustomOrderEligible: ap.isCustomOrderEligible ?? ap.customOrdersEnabled ?? false,
     category: ap.category ?? null,
     styleTags: splitCsv(ap.styleTags),
     serviceCategories: toStringList(ap.serviceCategories),

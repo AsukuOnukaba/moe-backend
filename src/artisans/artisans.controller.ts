@@ -20,6 +20,12 @@ import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { ArtisanReviewsService } from './artisan-reviews.service';
 import { ArtisanVerificationService } from './artisan-verification.service';
 import { ArtisansService } from './artisans.service';
+import { ProductVariationsService } from './product-variations.service';
+import {
+  ReplaceProductVariationsDto,
+  ToggleVariationTypeDto,
+  UpdateVariationOptionStockDto,
+} from './dto/product-variation.dto';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
@@ -31,6 +37,7 @@ export class ArtisansController {
     private readonly artisans: ArtisansService,
     private readonly reviews: ArtisanReviewsService,
     private readonly verification: ArtisanVerificationService,
+    private readonly variations: ProductVariationsService,
   ) {}
 
   @UseGuards(JwtAuthGuard)
@@ -193,6 +200,55 @@ export class ArtisansController {
   }
 
   /** Public products for an artisan — same filter as productCount on listing/detail. */
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('products/:id/variations')
+  replaceVariations(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Body() body: ReplaceProductVariationsDto,
+  ) {
+    return this.variations.replaceAll(
+      req.user as AccessTokenPayload,
+      Number(id),
+      body,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('products/:id/variations/:typeId')
+  toggleVariationType(
+    @Param('id') id: string,
+    @Param('typeId') typeId: string,
+    @Req() req: Request,
+    @Body() body: ToggleVariationTypeDto,
+  ) {
+    return this.variations.toggleType(
+      req.user as AccessTokenPayload,
+      Number(id),
+      typeId,
+      body.isEnabled,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('products/:id/variations/:typeId/options/:optionId')
+  updateOptionStock(
+    @Param('id') id: string,
+    @Param('typeId') typeId: string,
+    @Param('optionId') optionId: string,
+    @Req() req: Request,
+    @Body() body: UpdateVariationOptionStockDto,
+  ) {
+    return this.variations.updateOptionStock(
+      req.user as AccessTokenPayload,
+      Number(id),
+      typeId,
+      optionId,
+      body.stockCount,
+    );
+  }
+
   @Get(':id/products')
   async listPublicProducts(
     @Param('id') id: string,

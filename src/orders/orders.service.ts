@@ -484,13 +484,60 @@ export class OrdersService {
     const rushSurcharge = rushOrder ? basePrice * (surchargePercent / 100) : 0;
     const finalPrice = basePrice + rushSurcharge;
 
-    const customisationData =
-      first.customisation ?? first.customization ?? null;
+    const rawCustomisation =
+      (first.customisation as Record<string, unknown> | undefined) ??
+      (first.customization as Record<string, unknown> | undefined) ??
+      null;
+    // FE sometimes puts variation selections in `customisation`; keep template
+    // customisation separate from product variation selections.
+    const variationKeys = new Set([
+      'size',
+      'colour',
+      'color',
+      'material',
+      'body_type',
+      'shoe_size',
+      'length',
+      'width',
+    ]);
+    const customisationLooksLikeVariations =
+      !!rawCustomisation &&
+      Object.keys(rawCustomisation).length > 0 &&
+      Object.keys(rawCustomisation).every((k) => variationKeys.has(k));
 
-    if (customisationData && product.category) {
+    const selectedVariations = {
+      ...((first.selectedVariants as Record<string, unknown> | undefined) ?? {}),
+      ...((first.selectedVariations as Record<string, unknown> | undefined) ?? {}),
+      ...(customisationLooksLikeVariations ? rawCustomisation : {}),
+    };
+    const selectedBodyType =
+      (first.selectedBodyType as string | undefined) ??
+      (selectedVariations.body_type as string | undefined) ??
+      null;
+    const baseCustomisation = customisationLooksLikeVariations
+      ? null
+      : rawCustomisation;
+    const customisationData =
+      baseCustomisation ||
+      Object.keys(selectedVariations).length > 0 ||
+      selectedBodyType ||
+      first.selectedSize
+        ? {
+            ...(baseCustomisation ?? {}),
+            ...(Object.keys(selectedVariations).length
+              ? { selectedVariations }
+              : {}),
+            ...(selectedBodyType ? { selectedBodyType } : {}),
+            ...(first.selectedSize
+              ? { selectedSize: first.selectedSize }
+              : {}),
+          }
+        : null;
+
+    if (baseCustomisation && product.category) {
       const validation = validateCustomisationPayload(
         product.category,
-        customisationData,
+        baseCustomisation,
       );
       if (!validation.valid) {
         const parts: string[] = [];
@@ -516,7 +563,7 @@ export class OrdersService {
         providerId: product.providerId,
         providerName: artisanProfile?.brandName ?? provider?.name ?? '',
         customizationId: null,
-        isCustomOrder: Boolean(customisationData),
+        isCustomOrder: Boolean(baseCustomisation),
         status: 'pending',
         basePrice,
         rushSurcharge: rushOrder ? rushSurcharge : null,

@@ -120,7 +120,10 @@ export class ProductsService {
   async getProductById(id: number) {
     const p = await this.prisma.product.findFirst({
       where: { id, status: APPROVED_STATUS, ...activeProductWhere },
-      include: { keywords: { include: { keyword: true } } },
+      include: {
+        keywords: { include: { keyword: true } },
+        variationTypes: { include: { options: true } },
+      },
     });
     if (!p) return null;
     const views = await this.events.productViewStats(id);
@@ -136,7 +139,10 @@ export class ProductsService {
         status: APPROVED_STATUS,
         ...activeProductWhere,
       },
-      include: { keywords: { include: { keyword: true } } },
+      include: {
+        keywords: { include: { keyword: true } },
+        variationTypes: { include: { options: true } },
+      },
     });
     const byId = new Map(products.map((p) => [p.id, productToDto(p)]));
     return ids.map((id) => byId.get(id)).filter(Boolean);
@@ -220,9 +226,24 @@ export class ProductsService {
     };
   }
 
-  async variants(_productId: number) {
-    // TEMP: product variants not modeled yet.
-    return [];
+  async variants(productId: number) {
+    const rows = await this.prisma.productVariationType.findMany({
+      where: { productId, isEnabled: true },
+      include: { options: true },
+      orderBy: { typeName: 'asc' },
+    });
+    return rows.flatMap((t) =>
+      t.options.map((o) => ({
+        id: o.id,
+        productId,
+        name: o.label,
+        type: t.typeName,
+        value: o.value,
+        priceModifier: o.priceOverride ?? 0,
+        stockCount: o.stockCount,
+        isAvailable: o.isAvailable !== false && !(o.stockCount != null && o.stockCount === 0),
+      })),
+    );
   }
 
   async listProductsByProvider(providerId: number, query: any) {

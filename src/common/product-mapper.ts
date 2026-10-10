@@ -38,6 +38,7 @@ export function productToDto(p: {
   metaTitle?: string | null;
   metaDescription?: string | null;
   keywords?: { keyword: { term: string } }[] | { term: string }[];
+  variationTypes?: any[];
 }) {
   const keywords = Array.isArray(p.keywords)
     ? p.keywords.map((k: any) =>
@@ -69,5 +70,35 @@ export function productToDto(p: {
     metaTitle: p.metaTitle ?? null,
     metaDescription: p.metaDescription ?? null,
     keywords,
+    ...(Array.isArray(p.variationTypes)
+      ? {
+          variationTypes: p.variationTypes.map((vt: any) => ({
+            id: vt.id,
+            typeName: vt.typeName,
+            isEnabled: vt.isEnabled !== false,
+            isRequired: !!vt.isRequired,
+            options: Array.isArray(vt.options)
+              ? [...vt.options]
+                  .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+                  .map((o: any) => {
+                    const soldOut =
+                      o.isAvailable === false ||
+                      (o.stockCount != null && o.stockCount === 0);
+                    return {
+                      id: o.id,
+                      label: o.label,
+                      value: o.value,
+                      colorHex: o.colorHex ?? null,
+                      priceOverride: o.priceOverride ?? null,
+                      stockCount: o.stockCount ?? null,
+                      isAvailable: !soldOut,
+                      position: o.position ?? 0,
+                    };
+                  })
+              : [],
+          })),
+        }
+      : {}),
   };
 }
+

@@ -37,8 +37,10 @@ function hasCustomisationPayload(body: Record<string, unknown>): boolean {
   if (measurements && typeof measurements === 'object' && Object.keys(measurements as object).length > 0) {
     return true;
   }
-  const selectedVariants = body.selectedVariants;
-  if (selectedVariants && typeof selectedVariants === 'object' && Object.keys(selectedVariants as object).length > 0) {
+  const selectedVariants =
+    (body.selectedVariations as Record<string, unknown> | undefined) ??
+    (body.selectedVariants as Record<string, unknown> | undefined);
+  if (selectedVariants && typeof selectedVariants === 'object' && Object.keys(selectedVariants).length > 0) {
     return true;
   }
   return Boolean(body.selectedSize || body.selectedBodyType);
@@ -102,8 +104,21 @@ export class CartService {
       finalPrice,
       category: p.category ?? '',
       selectedSize: typeof body?.selectedSize === 'string' ? body.selectedSize : 'M',
-      selectedBodyType: (body?.selectedBodyType as string | null) ?? null,
-      selectedVariants: (body?.selectedVariants as Record<string, unknown>) ?? {},
+      selectedBodyType:
+        (body?.selectedBodyType as string | null) ??
+        ((body?.selectedVariations as Record<string, unknown> | undefined)?.body_type as
+          | string
+          | null
+          | undefined) ??
+        ((body?.selectedVariants as Record<string, unknown> | undefined)?.body_type as
+          | string
+          | null
+          | undefined) ??
+        null,
+      selectedVariants: {
+        ...((body?.selectedVariants as Record<string, unknown>) ?? {}),
+        ...((body?.selectedVariations as Record<string, unknown>) ?? {}),
+      },
       measurements: (body?.measurements as Record<string, unknown>) ?? {},
       customisation:
         (body?.customisation as Record<string, unknown>) ??

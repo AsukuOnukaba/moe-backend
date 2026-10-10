@@ -37,6 +37,7 @@ model User {
   productReviews        ProductReview[]
   notifications         Notification[]
   behaviourEvents       UserBehaviourEvent[]
+  customerCustomOrders  CustomOrder[]       @relation("CustomerCustomOrders")
 }
 
 model Address {
@@ -84,6 +85,9 @@ model ArtisanProfile {
   rejectionReason String?
 
   customOrdersEnabled       Boolean @default(false)
+  isCustomOrderEligible     Boolean @default(false)
+  customOrderApprovedAt     DateTime?
+  customOrderApprovedBy     String?
   rushOrderEnabled          Boolean @default(false)
   rushOrderSurchargePercent Float   @default(25)
   verified                  Boolean @default(false)
@@ -100,8 +104,9 @@ model ArtisanProfile {
   installmentsAvailable  Boolean  @default(false)
   installmentDetails     String?
 
-  products Product[]
-  reviews  ArtisanReview[]
+  products     Product[]
+  customOrders CustomOrder[]
+  reviews      ArtisanReview[]
   keywords ArtisanKeyword[]
   score    ArtisanScore?
 
@@ -184,9 +189,10 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  wishlistItems WishlistItem[]
-  reviews       ProductReview[]
-  keywords      ProductKeyword[]
+  wishlistItems  WishlistItem[]
+  reviews        ProductReview[]
+  keywords       ProductKeyword[]
+  variationTypes ProductVariationType[]
 
   @@index([providerId])
   @@index([artisanId])
@@ -553,3 +559,56 @@ model UserBehaviourEvent {
   @@index([entityType, eventType, createdAt])
   @@index([sessionId, eventType, entityId, createdAt])
 }
+
+model ProductVariationType {
+  id         String            @id @default(uuid())
+  productId  Int
+  product    Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  typeName   String
+  isEnabled  Boolean           @default(true)
+  isRequired Boolean           @default(false)
+  options    VariationOption[]
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([productId])
+  @@unique([productId, typeName])
+}
+
+model VariationOption {
+  id              String               @id @default(uuid())
+  variationTypeId String
+  variationType   ProductVariationType @relation(fields: [variationTypeId], references: [id], onDelete: Cascade)
+  label           String
+  value           String
+  colorHex        String?
+  priceOverride   Float?
+  stockCount      Int?
+  isAvailable     Boolean              @default(true)
+  position        Int                  @default(0)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([variationTypeId])
+}
+
+model CustomOrder {
+  id              String         @id @default(uuid())
+  artisanId       Int
+  artisan         ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
+  customerId      Int
+  customer        User           @relation("CustomerCustomOrders", fields: [customerId], references: [id], onDelete: Cascade)
+  description     String
+  referenceImages String[]       @default([])
+  budget          Float?
+  deadline        String?
+  status          String         @default("pending")
+  artisanResponse String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([artisanId])
+  @@index([customerId])
+  @@index([status])
+}
+

@@ -34,6 +34,7 @@ import { SectionsModule } from './sections/sections.module';
 import { KeywordsModule } from './keywords/keywords.module';
 import { EventsModule } from './events/events.module';
 import { EmailModule } from './email/email.module';
+import { CustomOrdersModule } from './custom-orders/custom-orders.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { EmailModule } from './email/email.module';
     SectionsModule,
     KeywordsModule,
     EventsModule,
+    CustomOrdersModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

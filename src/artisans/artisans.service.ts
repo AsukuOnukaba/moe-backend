@@ -11,6 +11,7 @@ import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
+import { ProductVariationsService } from './product-variations.service';
 import { productToDto } from '../common/product-mapper';
 import { normalizeProductCategory } from '../common/product-categories';
 import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service-categories';
@@ -27,6 +28,7 @@ export class ArtisansService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly keywords: KeywordsService,
+    private readonly variations: ProductVariationsService,
   ) {}
 
   private requireArtisan(user: AccessTokenPayload) {
@@ -81,6 +83,7 @@ export class ArtisansService {
       storeImageUrl: artisanProfile.storeImageUrl ?? null,
       coverImageUrl: artisanProfile.coverImageUrl ?? null,
       customOrdersEnabled: artisanProfile.customOrdersEnabled ?? false,
+      isCustomOrderEligible: artisanProfile.isCustomOrderEligible ?? artisanProfile.customOrdersEnabled ?? false,
       rushOrderEnabled: artisanProfile.rushOrderEnabled ?? false,
       rushOrderSurchargePercent: artisanProfile.rushOrderSurchargePercent ?? 25,
       status: artisanProfile.status ?? 'pending',
@@ -185,6 +188,7 @@ export class ArtisansService {
       storeImageUrl: upserted.storeImageUrl ?? null,
       coverImageUrl: upserted.coverImageUrl ?? null,
       customOrdersEnabled: upserted.customOrdersEnabled ?? false,
+      isCustomOrderEligible: upserted.isCustomOrderEligible ?? upserted.customOrdersEnabled ?? false,
       rushOrderEnabled: upserted.rushOrderEnabled ?? false,
       rushOrderSurchargePercent: upserted.rushOrderSurchargePercent ?? 25,
       status: upserted.status ?? 'pending',
@@ -210,6 +214,7 @@ export class ArtisansService {
       orderBy: { updatedAt: 'desc' },
       skip: (safePage - 1) * safePageSize,
       take: safePageSize,
+      include: { variationTypes: { include: { options: true } } },
     });
 
     return {
@@ -253,9 +258,15 @@ export class ArtisansService {
     });
 
     await this.keywords.reindexProductKeywords(created.id, dto.keywords);
+    if (Array.isArray(dto.variationTypes)) {
+      await this.variations.replaceForProduct(created.id, dto.variationTypes);
+    }
     const withKw = await this.prisma.product.findUnique({
       where: { id: created.id },
-      include: { keywords: { include: { keyword: true } } },
+      include: {
+        keywords: { include: { keyword: true } },
+        variationTypes: { include: { options: true } },
+      },
     });
     return productToDto(withKw ?? created);
   }
@@ -333,9 +344,15 @@ export class ArtisansService {
     });
 
     await this.keywords.reindexProductKeywords(productId, dto.keywords);
+    if (Array.isArray(dto.variationTypes)) {
+      await this.variations.replaceForProduct(productId, dto.variationTypes);
+    }
     const withKw = await this.prisma.product.findUnique({
       where: { id: productId },
-      include: { keywords: { include: { keyword: true } } },
+      include: {
+        keywords: { include: { keyword: true } },
+        variationTypes: { include: { options: true } },
+      },
     });
     return productToDto(withKw ?? updated);
   }

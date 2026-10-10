@@ -11,9 +11,12 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PRODUCT_CATEGORIES } from '../../common/product-categories';
 import { ValidatePriceRange } from '../../common/validators/price-range.validator';
+import { VariationTypeInputDto } from './product-variation.dto';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -122,4 +125,10 @@ export class CreateArtisanProductDto {
   @IsInt()
   @Min(0)
   stockCount?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VariationTypeInputDto)
+  variationTypes?: VariationTypeInputDto[];
 }

@@ -24,6 +24,7 @@ import { UpdateCategoryDto } from '../categories/dto/update-category.dto';
 import { BulkDeleteCategoriesDto } from './dto/bulk-delete-categories.dto';
 import { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import { CreateAdminProductDto } from './dto/create-admin-product.dto';
+import { CustomOrdersService } from '../custom-orders/custom-orders.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -32,6 +33,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly conversations: ConversationsService,
     private readonly categories: CategoriesService,
+    private readonly customOrders: CustomOrdersService,
   ) {}
 
   @Get('dashboard')
@@ -90,6 +92,21 @@ export class AdminController {
     @Body() body: { status: 'approved' | 'rejected'; reason?: string },
   ) {
     return this.admin.patchArtisanStatus(id, body.status, body.reason);
+  }
+
+  @Patch('artisans/:id/custom-order-eligibility')
+  setCustomOrderEligibility(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { isEligible: boolean },
+  ) {
+    const user = req.user as AccessTokenPayload;
+    return this.customOrders.setEligibility(user.sub, id, Boolean(body?.isEligible));
+  }
+
+  @Get('custom-orders')
+  listCustomOrders() {
+    return this.customOrders.listAdmin();
   }
 
   @Delete('artisans/:id')

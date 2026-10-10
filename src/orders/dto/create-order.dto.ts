@@ -97,6 +97,22 @@ export class CheckoutOrderItemDto {
   @IsOptional()
   @IsBoolean()
   rushOrder?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  selectedVariations?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsObject()
+  selectedVariants?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  selectedBodyType?: string;
+
+  @IsOptional()
+  @IsString()
+  selectedSize?: string;
 }
 
 export class CreateOrderDto {

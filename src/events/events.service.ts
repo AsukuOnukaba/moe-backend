@@ -66,12 +66,36 @@ export class EventsService {
     const d1 = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const [last24h, last7d] = await Promise.all([
-      this.aggregateSince(d1),
-      this.aggregateSince(d7),
-    ]);
+    const [last24h, last7d, byType24h, byType7d, total24h, total7d] =
+      await Promise.all([
+        this.aggregateEntityEventsSince(d1),
+        this.aggregateEntityEventsSince(d7),
+        this.aggregateByEventTypeSince(d1),
+        this.aggregateByEventTypeSince(d7),
+        this.prisma.userBehaviourEvent.count({
+          where: { createdAt: { gte: d1 } },
+        }),
+        this.prisma.userBehaviourEvent.count({
+          where: { createdAt: { gte: d7 } },
+        }),
+      ]);
 
-    return { last24h, last7d };
+    return {
+      last24h,
+      last7d,
+      totals: { last24h: total24h, last7d: total7d },
+      byEventType: { last24h: byType24h, last7d: byType7d },
+      trackedEventTypes: [
+        'product_view',
+        'artisan_view',
+        'search',
+        'add_to_cart',
+        'wishlist_add',
+        'category_browse',
+        'filter_applied',
+      ],
+      demandThresholds: DEMAND_THRESHOLDS,
+    };
   }
 
   async productViewStats(productId: number) {
@@ -104,7 +128,8 @@ export class EventsService {
     return { viewsToday, viewsThisWeek, isHighDemand };
   }
 
-  private async aggregateSince(since: Date) {
+  /** Top entity-scoped discovery events (product/artisan views) for ranking tables. */
+  private async aggregateEntityEventsSince(since: Date) {
     const rows = await this.prisma.userBehaviourEvent.groupBy({
       by: ['entityType', 'entityId', 'eventType'],
       where: {
@@ -119,6 +144,20 @@ export class EventsService {
     return rows.map((r) => ({
       entityType: r.entityType,
       entityId: r.entityId,
+      eventType: r.eventType,
+      count: r._count._all,
+    }));
+  }
+
+  /** Counts for every event type (search, cart, wishlist, views, …). */
+  private async aggregateByEventTypeSince(since: Date) {
+    const rows = await this.prisma.userBehaviourEvent.groupBy({
+      by: ['eventType'],
+      where: { createdAt: { gte: since } },
+      _count: { _all: true },
+      orderBy: { _count: { eventType: 'desc' } },
+    });
+    return rows.map((r) => ({
       eventType: r.eventType,
       count: r._count._all,
     }));

@@ -46,8 +46,9 @@ export class AuthController {
     return this.auth.register(dto);
   }
 
+  /** Flood ceiling only; failed-attempt lockout (5 failures → 5 min) lives in AuthService. */
   @UseGuards(MoeThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('login')
   async login(@Body() dto: AuthLoginDto) {
     return this.auth.login(dto);
@@ -86,7 +87,7 @@ export class AuthController {
     const result = await this.auth.handleGoogleLogin(req.user as any);
     const redirect =
       this.config.get<string>('GOOGLE_SUCCESS_REDIRECT') ??
-      'http://localhost:8080/auth/google/callback';
+      'http://localhost:8080/auth/callback';
     const url = new URL(redirect);
     url.searchParams.set('token', result.token);
     url.searchParams.set('refreshToken', result.refreshToken);

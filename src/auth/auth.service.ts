@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -23,6 +25,57 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 
 function authError(message: string, code: ErrorCode): UnauthorizedException {
   return new UnauthorizedException({ message, code });
+}
+
+/** Failed-login lockout: 5 consecutive failures → 5-minute lock (in-memory, per email). */
+const MAX_FAILED_LOGINS = 5;
+const LOGIN_LOCKOUT_MS = 5 * 60 * 1000;
+type LoginFailureState = { count: number; lockedUntil: number | null };
+const loginFailures = new Map<string, LoginFailureState>();
+
+function loginAttemptKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function throwLoginLockout(lockedUntil: number): never {
+  const mins = Math.max(1, Math.ceil((lockedUntil - Date.now()) / 60_000));
+  throw new HttpException(
+    {
+      message: `Too many failed attempts. Please try again in ${mins} minute${mins === 1 ? '' : 's'}.`,
+      code: 'RATE_LIMIT_EXCEEDED',
+    },
+    HttpStatus.TOO_MANY_REQUESTS,
+  );
+}
+
+function assertLoginNotLocked(email: string): void {
+  const state = loginFailures.get(loginAttemptKey(email));
+  if (state?.lockedUntil && state.lockedUntil > Date.now()) {
+    throwLoginLockout(state.lockedUntil);
+  }
+}
+
+function recordFailedLogin(email: string): void {
+  const key = loginAttemptKey(email);
+  const prev = loginFailures.get(key) ?? { count: 0, lockedUntil: null };
+  if (prev.lockedUntil && prev.lockedUntil > Date.now()) {
+    throwLoginLockout(prev.lockedUntil);
+  }
+  // Prior lockout expired — start a fresh failure window.
+  if (prev.lockedUntil && prev.lockedUntil <= Date.now()) {
+    prev.count = 0;
+    prev.lockedUntil = null;
+  }
+  prev.count += 1;
+  // After 5 failures, subsequent attempts are locked (this attempt still returns invalid credentials).
+  if (prev.count >= MAX_FAILED_LOGINS) {
+    prev.lockedUntil = Date.now() + LOGIN_LOCKOUT_MS;
+  }
+  loginFailures.set(key, prev);
+}
+
+function clearFailedLogins(email: string): void {
+  loginFailures.delete(loginAttemptKey(email));
 }
 
 function nowPlusMs(ms: number) {
@@ -201,14 +254,19 @@ export class AuthService {
   }
 
   async login(input: { email: string; password: string; rememberMe?: boolean }) {
+    const email = input.email.toLowerCase().trim();
+    assertLoginNotLocked(email);
+
     const user = await this.prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
+      where: { email },
     });
     if (!user) {
+      recordFailedLogin(email);
       throw authError('Invalid credentials', 'AUTH_INVALID_CREDENTIALS');
     }
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) {
+      recordFailedLogin(email);
       throw authError('Invalid credentials', 'AUTH_INVALID_CREDENTIALS');
     }
 
@@ -218,6 +276,8 @@ export class AuthService {
         code: 'FORBIDDEN',
       });
     }
+
+    clearFailedLogins(email);
 
     const role = await this.resolvePrimaryRole(user.id);
     // rememberMe: true → 30d; false/omitted → 24h (session default).

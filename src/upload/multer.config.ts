@@ -16,11 +16,16 @@ class LazyCloudinaryStorage implements multer.StorageEngine {
   private getInner(): CloudinaryStorage {
     if (this.inner) return this.inner;
     const cloudinary = ensureCloudinaryConfigured();
+    const isVerification = this.subfolder === 'verification';
     this.inner = new CloudinaryStorage({
       cloudinary,
       params: {
         folder: `moe/${this.subfolder}`,
-        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+        allowed_formats: isVerification
+          ? ['jpg', 'jpeg', 'png', 'webp', 'pdf']
+          : ['jpg', 'jpeg', 'png', 'webp'],
+        // PDFs must not use the default image resource type.
+        ...(isVerification ? { resource_type: 'auto' } : {}),
         // public_id must be a function per multer-storage-cloudinary
         public_id: () => randomUUID(),
       } as Record<string, unknown>,
@@ -68,7 +73,9 @@ export function createMulterOptions(subfolder: string): multer.Options {
       if (!allowed.includes(file.mimetype)) {
         return cb(
           new BadRequestException(
-            'Only JPEG, PNG, and WebP images are allowed',
+            subfolder === 'verification'
+              ? 'Only JPEG, PNG, WebP, and PDF files are allowed for verification'
+              : 'Only JPEG, PNG, and WebP images are allowed',
           ),
         );
       }

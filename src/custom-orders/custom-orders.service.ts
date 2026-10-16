@@ -355,6 +355,10 @@ export class CustomOrdersService {
         artisanName:
           r.artisan?.brandName || r.artisan?.businessName || null,
         customerName: r.customer?.name ?? null,
+        description: r.description,
+        budget: r.budget,
+        budgetMin: r.budgetMin,
+        budgetMax: r.budgetMax,
         status: r.status,
         createdAt: r.createdAt.toISOString(),
         categoryFieldsSummary: summarizeCategoryFields(r.categoryFields),

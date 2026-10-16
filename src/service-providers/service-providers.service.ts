@@ -28,6 +28,12 @@ export class ServiceProvidersService {
       typeof query?.state === 'string' ? query.state.trim() : undefined;
     const city =
       typeof query?.city === 'string' ? query.city.trim() : undefined;
+    const q =
+      typeof query?.q === 'string'
+        ? query.q.trim()
+        : typeof query?.search === 'string'
+          ? query.search.trim()
+          : '';
     const serviceCategories =
       typeof query?.serviceCategories === 'string'
         ? query.serviceCategories.split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -93,6 +99,30 @@ export class ServiceProvidersService {
           ),
         ),
       );
+    }
+    if (q.length >= 2) {
+      const needle = q.toLowerCase();
+      providers = providers.filter((p) => {
+        const styleTags = Array.isArray(p.styleTags)
+          ? p.styleTags
+          : typeof p.styleTags === 'string'
+            ? String(p.styleTags).split(',').map((s) => s.trim())
+            : [];
+        const blob = [
+          p.brandName,
+          p.businessName,
+          p.category,
+          p.city,
+          p.state,
+          p.country,
+          ...styleTags,
+          ...(Array.isArray(p.serviceCategories) ? p.serviceCategories : []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return blob.includes(needle);
+      });
     }
 
     const totalItems = providers.length;

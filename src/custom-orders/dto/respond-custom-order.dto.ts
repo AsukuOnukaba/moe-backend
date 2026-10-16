@@ -1,10 +1,10 @@
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsString, MinLength } from 'class-validator';
 
 export class RespondCustomOrderDto {
-  @IsIn(['accepted', 'declined'])
-  status!: 'accepted' | 'declined';
+  @IsIn(['accept', 'decline'])
+  action!: 'accept' | 'decline';
 
-  @IsOptional()
   @IsString()
-  artisanResponse?: string;
+  @MinLength(10, { message: 'Response must be at least 10 characters' })
+  response!: string;
 }

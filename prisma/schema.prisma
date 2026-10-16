@@ -104,11 +104,12 @@ model ArtisanProfile {
   installmentsAvailable  Boolean  @default(false)
   installmentDetails     String?
 
-  products     Product[]
-  customOrders CustomOrder[]
-  reviews      ArtisanReview[]
-  keywords ArtisanKeyword[]
-  score    ArtisanScore?
+  products         Product[]
+  customOrders     CustomOrder[]
+  reviews          ArtisanReview[]
+  keywords         ArtisanKeyword[]
+  score            ArtisanScore?
+  customOrderRank  CustomOrderRank?
 
   metaTitle       String?
   metaDescription String?
@@ -196,6 +197,7 @@ model Product {
 
   @@index([providerId])
   @@index([artisanId])
+  @@index([artisanId, status])
   @@index([category])
   @@index([status])
   @@index([deletedAt])
@@ -556,6 +558,7 @@ model UserBehaviourEvent {
   @@index([sessionId])
   @@index([eventType])
   @@index([entityId])
+  @@index([entityId, eventType, createdAt])
   @@index([entityType, eventType, createdAt])
   @@index([sessionId, eventType, entityId, createdAt])
 }
@@ -593,22 +596,43 @@ model VariationOption {
 }
 
 model CustomOrder {
-  id              String         @id @default(uuid())
-  artisanId       Int
-  artisan         ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
-  customerId      Int
-  customer        User           @relation("CustomerCustomOrders", fields: [customerId], references: [id], onDelete: Cascade)
-  description     String
-  referenceImages String[]       @default([])
-  budget          Float?
-  deadline        String?
-  status          String         @default("pending")
-  artisanResponse String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                  String         @id @default(uuid())
+  artisanId           Int
+  artisan             ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
+  customerId          Int
+  customer            User           @relation("CustomerCustomOrders", fields: [customerId], references: [id], onDelete: Cascade)
+  description         String
+  referenceImages     String[]       @default([])
+  /// @deprecated Prefer budgetMin/budgetMax
+  budget              Float?
+  budgetMin           Float?
+  budgetMax           Float?
+  deadline            DateTime?
+  specialInstructions String?
+  /// Category-specific payload (tailoring measurements, shoe size, etc.)
+  categoryFields      Json?
+  status              String         @default("pending")
+  artisanResponse     String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   @@index([artisanId])
   @@index([customerId])
   @@index([status])
+}
+
+/// Custom-order discovery ranking (separate from ArtisanScore curation).
+model CustomOrderRank {
+  id                 String         @id @default(uuid())
+  artisanId          Int            @unique
+  artisan            ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
+  fulfilmentRate     Float          @default(0)
+  satisfactionScore  Float          @default(0)
+  avgResponseTimeHrs Float          @default(0)
+  compositeRank      Float          @default(0)
+  lastCalculatedAt   DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([compositeRank])
 }
 

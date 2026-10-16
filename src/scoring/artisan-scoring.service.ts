@@ -145,6 +145,11 @@ export class ArtisanScoringService {
     return { processed };
   }
 
+  /** Alias used by admin scores controller / ops docs. */
+  async getScores(page = 1, pageSize = 50) {
+    return this.listScores(page, pageSize);
+  }
+
   async listScores(page = 1, pageSize = 50) {
     try {
       const pageNum = Number.isFinite(Number(page))
@@ -155,14 +160,24 @@ export class ArtisanScoringService {
         : 50;
       const take = Math.min(Math.max(sizeNum, 1), 100);
       const skip = (pageNum - 1) * take;
+
+      // Two-step fetch avoids nested-include failures if a profile/user
+      // relation is missing or the Prisma client is mid-regeneration.
       const [total, rows] = await Promise.all([
         this.prisma.artisanScore.count(),
         this.prisma.artisanScore.findMany({
           orderBy: { compositeScore: 'desc' },
           skip,
           take,
-          include: {
-            artisan: {
+        }),
+      ]);
+
+      const artisanIds = rows.map((r) => r.artisanId);
+      const profiles =
+        artisanIds.length === 0
+          ? []
+          : await this.prisma.artisanProfile.findMany({
+              where: { userId: { in: artisanIds } },
               select: {
                 userId: true,
                 brandName: true,
@@ -172,33 +187,35 @@ export class ArtisanScoringService {
                 rating: true,
                 user: { select: { name: true, email: true, avatarUrl: true } },
               },
-            },
-          },
-        }),
-      ]);
+            });
+      const byId = new Map(profiles.map((p) => [p.userId, p]));
+
       return {
         total,
         page: pageNum,
         pageSize: take,
-        items: rows.map((r) => ({
-          artisanId: r.artisanId,
-          name:
-            r.artisan?.brandName ||
-            r.artisan?.businessName ||
-            r.artisan?.user?.name ||
-            `Artisan #${r.artisanId}`,
-          email: r.artisan?.user?.email ?? null,
-          avatarUrl: r.artisan?.user?.avatarUrl ?? null,
-          category: r.artisan?.category ?? null,
-          status: r.artisan?.status ?? null,
-          publicRating: r.artisan?.rating ?? null,
-          orderCompletionRate: r.orderCompletionRate,
-          avgResponseTimeHrs: r.avgResponseTimeHrs,
-          reviewQualityScore: r.reviewQualityScore,
-          activityScore: r.activityScore,
-          compositeScore: r.compositeScore,
-          lastCalculatedAt: r.lastCalculatedAt,
-        })),
+        items: rows.map((r) => {
+          const artisan = byId.get(r.artisanId);
+          return {
+            artisanId: r.artisanId,
+            name:
+              artisan?.brandName ||
+              artisan?.businessName ||
+              artisan?.user?.name ||
+              `Artisan #${r.artisanId}`,
+            email: artisan?.user?.email ?? null,
+            avatarUrl: artisan?.user?.avatarUrl ?? null,
+            category: artisan?.category ?? null,
+            status: artisan?.status ?? null,
+            publicRating: artisan?.rating ?? null,
+            orderCompletionRate: r.orderCompletionRate,
+            avgResponseTimeHrs: r.avgResponseTimeHrs,
+            reviewQualityScore: r.reviewQualityScore,
+            activityScore: r.activityScore,
+            compositeScore: r.compositeScore,
+            lastCalculatedAt: r.lastCalculatedAt,
+          };
+        }),
       };
     } catch (error) {
       console.error('GET /admin/artisans/scores error:', error);

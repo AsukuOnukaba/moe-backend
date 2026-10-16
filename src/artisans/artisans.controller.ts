@@ -106,14 +106,24 @@ export class ArtisansController {
     @Query('country') country?: string,
     @Query('state') state?: string,
     @Query('city') city?: string,
+    @Query('isCustomOrderEligible') isCustomOrderEligible?: string,
+    @Query('sort') sort?: string,
   ) {
     const pageNum = page ? Number(page) : 1;
     const sizeNum = pageSize ? Number(pageSize) : 20;
+    const eligibleFilter =
+      isCustomOrderEligible === 'true'
+        ? true
+        : isCustomOrderEligible === 'false'
+          ? false
+          : undefined;
     return this.artisans.getAll(pageNum, sizeNum, {
       category: category?.trim() || undefined,
       country: country?.trim() || undefined,
       state: state?.trim() || undefined,
       city: city?.trim() || undefined,
+      isCustomOrderEligible: eligibleFilter,
+      sort: sort?.trim() || undefined,
     });
   }
 

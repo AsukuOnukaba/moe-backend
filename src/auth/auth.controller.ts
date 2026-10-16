@@ -40,7 +40,7 @@ export class AuthController {
   ) {}
 
   @UseGuards(MoeThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @Post('register')
   async register(@Body() dto: AuthRegisterDto) {
     return this.auth.register(dto);

@@ -104,11 +104,6 @@ export class AdminController {
     return this.customOrders.setEligibility(user.sub, id, Boolean(body?.isEligible));
   }
 
-  @Get('custom-orders')
-  listCustomOrders() {
-    return this.customOrders.listAdmin();
-  }
-
   @Delete('artisans/:id')
   @HttpCode(204)
   async removeArtisan(

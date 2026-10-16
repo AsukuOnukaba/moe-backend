@@ -123,11 +123,45 @@ export class ProductsService {
       include: {
         keywords: { include: { keyword: true } },
         variationTypes: { include: { options: true } },
+        artisan: {
+          select: {
+            userId: true,
+            brandName: true,
+            businessName: true,
+            isCustomOrderEligible: true,
+            customOrdersEnabled: true,
+            heroImage: true,
+            rating: true,
+            reviewCount: true,
+            verified: true,
+            user: { select: { name: true, avatarUrl: true } },
+          },
+        },
+        provider: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            artisanProfile: {
+              select: {
+                brandName: true,
+                businessName: true,
+                isCustomOrderEligible: true,
+                customOrdersEnabled: true,
+                heroImage: true,
+                rating: true,
+                reviewCount: true,
+                verified: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!p) return null;
     const views = await this.events.productViewStats(id);
-    return { ...productToDto(p), ...views };
+    const artisan = mapProductArtisan(p);
+    return { ...productToDto(p), artisan, ...views };
   }
 
   /** Batch lookup preserving caller order (for recently viewed). */
@@ -268,5 +302,79 @@ export class ProductsService {
       pagination: { page, pageSize, totalPages, totalItems },
     };
   }
+}
+
+function mapProductArtisan(p: {
+  artisanId?: number | null;
+  providerId?: number | null;
+  artisan?: {
+    userId: number;
+    brandName: string | null;
+    businessName: string | null;
+    isCustomOrderEligible: boolean;
+    customOrdersEnabled: boolean;
+    heroImage: string | null;
+    rating: number;
+    reviewCount: number;
+    verified: boolean;
+    user: { name: string; avatarUrl: string | null };
+  } | null;
+  provider?: {
+    id: number;
+    name: string;
+    avatarUrl: string | null;
+    artisanProfile: {
+      brandName: string | null;
+      businessName: string | null;
+      isCustomOrderEligible: boolean;
+      customOrdersEnabled: boolean;
+      heroImage: string | null;
+      rating: number;
+      reviewCount: number;
+      verified: boolean;
+    } | null;
+  } | null;
+}) {
+  if (p.artisan) {
+    return {
+      id: p.artisan.userId,
+      name: p.artisan.user.name,
+      brandName: p.artisan.brandName ?? p.artisan.user.name,
+      businessName: p.artisan.businessName ?? null,
+      heroImage: p.artisan.heroImage ?? null,
+      avatarUrl: p.artisan.user.avatarUrl ?? null,
+      rating: p.artisan.rating ?? 0,
+      reviewCount: p.artisan.reviewCount ?? 0,
+      verified: p.artisan.verified ?? false,
+      isCustomOrderEligible:
+        p.artisan.isCustomOrderEligible || p.artisan.customOrdersEnabled,
+      customOrdersEnabled: p.artisan.customOrdersEnabled ?? false,
+    };
+  }
+  if (p.provider?.artisanProfile) {
+    const ap = p.provider.artisanProfile;
+    return {
+      id: p.provider.id,
+      name: p.provider.name,
+      brandName: ap.brandName ?? p.provider.name,
+      businessName: ap.businessName ?? null,
+      heroImage: ap.heroImage ?? null,
+      avatarUrl: p.provider.avatarUrl ?? null,
+      rating: ap.rating ?? 0,
+      reviewCount: ap.reviewCount ?? 0,
+      verified: ap.verified ?? false,
+      isCustomOrderEligible:
+        ap.isCustomOrderEligible || ap.customOrdersEnabled,
+      customOrdersEnabled: ap.customOrdersEnabled ?? false,
+    };
+  }
+  if (p.providerId != null || p.artisanId != null) {
+    return {
+      id: p.artisanId ?? p.providerId,
+      isCustomOrderEligible: false,
+      customOrdersEnabled: false,
+    };
+  }
+  return null;
 }
 

@@ -1,9 +1,10 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsDateString,
   IsInt,
-  IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Min,
@@ -16,22 +17,42 @@ export class CreateCustomOrderDto {
   artisanId!: number;
 
   @IsString()
-  @IsNotEmpty()
-  @MinLength(30)
+  @MinLength(50, {
+    message: 'Description must be at least 50 characters',
+  })
   description!: string;
 
-  @IsOptional()
   @IsArray()
+  @IsOptional()
   @IsString({ each: true })
-  @ArrayMaxSize(3)
+  @ArrayMaxSize(10)
   referenceImages?: string[];
 
-  @IsOptional()
   @IsNumber()
+  @IsOptional()
+  @Min(0)
+  budgetMin?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  budgetMax?: number;
+
+  /** @deprecated Prefer budgetMin/budgetMax */
+  @IsNumber()
+  @IsOptional()
   @Min(0)
   budget?: number;
 
+  @IsDateString()
   @IsOptional()
-  @IsString()
   deadline?: string;
+
+  @IsString()
+  @IsOptional()
+  specialInstructions?: string;
+
+  @IsObject()
+  @IsOptional()
+  categoryFields?: Record<string, unknown>;
 }

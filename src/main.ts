@@ -9,7 +9,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { MoeHttpExceptionFilter } from './common/filters/http-exception.filter';
-import { TrimStringsPipe } from './common/pipes/trim-strings.pipe';
+import { SanitizePipe } from './common/pipes/sanitize.pipe';
 import * as path from 'path';
 
 async function bootstrap() {
@@ -29,8 +29,9 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
+  // SanitizePipe MUST run before ValidationPipe.
   app.useGlobalPipes(
-    new TrimStringsPipe(),
+    new SanitizePipe(),
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,

@@ -442,10 +442,13 @@ export class ArtisansService {
       country?: string;
       state?: string;
       city?: string;
+      isCustomOrderEligible?: boolean;
+      sort?: string;
     },
   ) {
     const safePage = Math.max(1, page ?? 1);
     const safePageSize = Math.max(1, Math.min(100, pageSize ?? 20));
+    const sortByCustomOrderRank = filters?.sort === 'customOrderRank';
 
     const where: any = { status: 'approved' };
     if (filters?.category) {
@@ -460,23 +463,90 @@ export class ArtisansService {
     if (filters?.city) {
       where.city = { equals: filters.city, mode: 'insensitive' };
     }
+    // sort=customOrderRank implies eligible-only discovery
+    if (sortByCustomOrderRank || filters?.isCustomOrderEligible === true) {
+      where.isCustomOrderEligible = true;
+    } else if (filters?.isCustomOrderEligible === false) {
+      where.isCustomOrderEligible = false;
+    }
 
     const totalItems = await this.prisma.artisanProfile.count({ where });
     const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
 
+    let orderedIds: number[] | null = null;
+    if (sortByCustomOrderRank) {
+      // Rank sort with NULLS LAST (no rank → end). compositeRank is never exposed publicly.
+      // Apply the same filters as `where` via Prisma first, then order IDs in SQL.
+      const eligibleIds = (
+        await this.prisma.artisanProfile.findMany({
+          where,
+          select: { userId: true },
+        })
+      ).map((a) => a.userId);
+
+      if (eligibleIds.length === 0) {
+        orderedIds = [];
+      } else {
+        const ranked = await this.prisma.$queryRawUnsafe<{ userId: number }[]>(
+          `
+          SELECT ap."userId" AS "userId"
+          FROM "ArtisanProfile" ap
+          LEFT JOIN "CustomOrderRank" r ON r."artisanId" = ap."userId"
+          WHERE ap."userId" = ANY($1::int[])
+          ORDER BY r."compositeRank" DESC NULLS LAST, ap.rating DESC, ap."userId" ASC
+          LIMIT $2 OFFSET $3
+          `,
+          eligibleIds,
+          safePageSize,
+          (safePage - 1) * safePageSize,
+        );
+        orderedIds = ranked.map((r) => r.userId);
+      }
+    }
+
     const artisans = await this.prisma.artisanProfile.findMany({
-      where,
-      skip: (safePage - 1) * safePageSize,
-      take: safePageSize,
-      orderBy: { rating: 'desc' },
-      include: { user: true },
+      where: orderedIds
+        ? { userId: { in: orderedIds } }
+        : where,
+      ...(orderedIds
+        ? {}
+        : {
+            skip: (safePage - 1) * safePageSize,
+            take: safePageSize,
+            orderBy: { rating: 'desc' as const },
+          }),
+      include: {
+        user: true,
+        products: {
+          where: { status: 'approved', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 3,
+          select: {
+            id: true,
+            name: true,
+            images: true,
+            imageUrl: true,
+          },
+        },
+      },
     });
+
+    if (orderedIds) {
+      const byId = new Map(artisans.map((a) => [a.userId, a]));
+      artisans.length = 0;
+      for (const id of orderedIds) {
+        const a = byId.get(id);
+        if (a) artisans.push(a);
+      }
+    }
 
     const counts = await this.countPublicProductsByProvider(
       artisans.map((a) => a.userId),
     );
 
-    const data = artisans.map((a) => this.toPublicArtisan(a, a.user, counts.get(a.userId) ?? 0));
+    const data = artisans.map((a) =>
+      this.toPublicArtisan(a, a.user, counts.get(a.userId) ?? 0, a.products),
+    );
 
     return {
       data,
@@ -592,7 +662,19 @@ export class ArtisansService {
     },
     user: { name: string },
     productCount: number,
+    products?: {
+      id: number;
+      name: string;
+      images: string[];
+      imageUrl: string | null;
+    }[],
   ) {
+    const productPreviews = (products ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      imageUrl: p.images?.[0] ?? p.imageUrl ?? null,
+    }));
+
     return {
       id: a.userId,
       name: user.name,
@@ -611,8 +693,9 @@ export class ArtisansService {
       verified: a.verified ?? false,
       featured: a.featured ?? false,
       productCount,
+      productPreviews,
       customOrdersEnabled: a.customOrdersEnabled ?? false,
-      // Public: eligibility only — never approvedBy/approvedAt.
+      // Public: eligibility only — never approvedBy/approvedAt / scores / ranks.
       isCustomOrderEligible:
         a.isCustomOrderEligible ?? a.customOrdersEnabled ?? false,
       metaTitle: a.metaTitle ?? null,

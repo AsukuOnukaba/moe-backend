@@ -104,6 +104,14 @@ export class AdminController {
     return this.customOrders.setEligibility(user.sub, id, Boolean(body?.isEligible));
   }
 
+  @Patch('artisans/:id/verified')
+  setArtisanVerified(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { verified: boolean },
+  ) {
+    return this.admin.setArtisanVerified(id, Boolean(body?.verified));
+  }
+
   @Delete('artisans/:id')
   @HttpCode(204)
   async removeArtisan(

@@ -501,6 +501,28 @@ export class AdminService {
     };
   }
 
+  /** Marketplace "Verified" badge — independent of approval status / document review. */
+  async setArtisanVerified(id: number, verified: boolean) {
+    const existing = await this.prisma.artisanProfile.findUnique({
+      where: { userId: id },
+    });
+    if (!existing || existing.status === 'deleted') {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+
+    const updated = await this.prisma.artisanProfile.update({
+      where: { userId: id },
+      data: { verified: Boolean(verified) },
+      select: { userId: true, verified: true, brandName: true },
+    });
+
+    return {
+      id: updated.userId,
+      verified: updated.verified,
+      brandName: updated.brandName,
+    };
+  }
+
   /**
    * Permanently remove an artisan from marketplace surfaces.
    * Soft-deletes their products (deletedAt) and marks the profile status=deleted

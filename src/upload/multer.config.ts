@@ -57,23 +57,24 @@ class LazyCloudinaryStorage implements multer.StorageEngine {
  * Folders: products | store | covers | avatars → Cloudinary `moe/<folder>`
  */
 export function createMulterOptions(subfolder: string): multer.Options {
+  const isVerification = subfolder === 'verification';
   return {
     storage: new LazyCloudinaryStorage(subfolder),
-    limits: { fileSize: 2 * 1024 * 1024 },
+    // CAC / ID docs are often larger than product photos.
+    limits: { fileSize: (isVerification ? 10 : 2) * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      const allowed =
-        subfolder === 'verification'
-          ? [
-              'image/jpeg',
-              'image/png',
-              'image/webp',
-              'application/pdf',
-            ]
-          : ['image/jpeg', 'image/png', 'image/webp'];
+      const allowed = isVerification
+        ? [
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'application/pdf',
+          ]
+        : ['image/jpeg', 'image/png', 'image/webp'];
       if (!allowed.includes(file.mimetype)) {
         return cb(
           new BadRequestException(
-            subfolder === 'verification'
+            isVerification
               ? 'Only JPEG, PNG, WebP, and PDF files are allowed for verification'
               : 'Only JPEG, PNG, and WebP images are allowed',
           ),

@@ -150,15 +150,19 @@ export class AdminService {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
 
-    const [productCount, orderCount, reviewRows] = await Promise.all([
-      this.prisma.product.count({ where: { providerId: id, ...activeProductWhere } }),
-      this.prisma.order.count({ where: { providerId: id } }),
-      this.prisma.artisanReview.findMany({
-        where: { artisanId: id },
-        include: { customer: { select: { name: true } } },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
+    const [productCount, orderCount, reviewRows, documents] =
+      await Promise.all([
+        this.prisma.product.count({
+          where: { providerId: id, ...activeProductWhere },
+        }),
+        this.prisma.order.count({ where: { providerId: id } }),
+        this.prisma.artisanReview.findMany({
+          where: { artisanId: id },
+          include: { customer: { select: { name: true } } },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.verification.listForAdmin(id),
+      ]);
 
     const { passwordHash: _, ...user } = profile.user;
 
@@ -222,6 +226,9 @@ export class AdminService {
       },
       productCount,
       orderCount,
+      /** Embedded so admin detail can render docs without a second call. */
+      documents: documents.data,
+      verificationDocuments: documents.data,
       reviews: reviewRows.map((r) => {
         const names = this.splitCustomerName(r.customer.name);
         return {
@@ -442,7 +449,13 @@ export class AdminService {
   patchArtisanDocument(
     artisanId: number,
     docId: number,
-    body: { status?: string; notes?: string },
+    body: {
+      status?: string;
+      action?: string;
+      notes?: string;
+      adminNotes?: string;
+      reason?: string;
+    },
   ) {
     return this.verification.patchDocumentStatus(artisanId, docId, body);
   }

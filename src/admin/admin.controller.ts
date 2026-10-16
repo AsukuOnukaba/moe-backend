@@ -76,7 +76,31 @@ export class AdminController {
   patchArtisanDocument(
     @Param('id', ParseIntPipe) id: number,
     @Param('docId', ParseIntPipe) docId: number,
-    @Body() body: { status?: string; notes?: string },
+    @Body()
+    body: {
+      status?: string;
+      action?: string;
+      notes?: string;
+      adminNotes?: string;
+      reason?: string;
+    },
+  ) {
+    return this.admin.patchArtisanDocument(id, docId, body);
+  }
+
+  /** Alias for admin UIs that POST accept/reject instead of PATCH. */
+  @Post('artisans/:id/documents/:docId')
+  postArtisanDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('docId', ParseIntPipe) docId: number,
+    @Body()
+    body: {
+      status?: string;
+      action?: string;
+      notes?: string;
+      adminNotes?: string;
+      reason?: string;
+    },
   ) {
     return this.admin.patchArtisanDocument(id, docId, body);
   }

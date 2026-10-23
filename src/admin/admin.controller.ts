@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,8 +11,11 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -25,6 +29,7 @@ import { BulkDeleteCategoriesDto } from './dto/bulk-delete-categories.dto';
 import { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import { CreateAdminProductDto } from './dto/create-admin-product.dto';
 import { CustomOrdersService } from '../custom-orders/custom-orders.service';
+import { cloudinaryUrl, createMulterOptions } from '../upload/multer.config';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -150,6 +155,16 @@ export class AdminController {
   @Post('products')
   createProduct(@Body() dto: CreateAdminProductDto) {
     return this.admin.createProduct(dto);
+  }
+
+  /** Admin product image upload — same Cloudinary folder as artisan product images. */
+  @Post('products/upload-image')
+  @UseInterceptors(FileInterceptor('file', createMulterOptions('products')))
+  uploadProductImage(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    return { url: cloudinaryUrl(file) };
   }
 
   @Get('products')

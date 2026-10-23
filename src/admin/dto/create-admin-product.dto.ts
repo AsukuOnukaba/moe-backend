@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsIn,
@@ -8,8 +9,10 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { PRODUCT_CATEGORIES } from '../../common/product-categories';
+import { VariationTypeInputDto } from '../../artisans/dto/product-variation.dto';
 
 export class CreateAdminProductDto {
   @IsInt()
@@ -69,4 +72,11 @@ export class CreateAdminProductDto {
   @IsOptional()
   @IsInt()
   estimatedDeliveryDays?: number;
+
+  /** Same shape as artisan create — persisted via ProductVariationsService. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VariationTypeInputDto)
+  variationTypes?: VariationTypeInputDto[];
 }

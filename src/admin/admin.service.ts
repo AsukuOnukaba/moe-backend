@@ -11,6 +11,7 @@ import { EmailService } from '../email/email.service';
 import { ArtisanVerificationService } from '../artisans/artisan-verification.service';
 import { normalizeProductCategory } from '../common/product-categories';
 import { toStringList } from '../common/string-list';
+import { ProductVariationsService } from '../artisans/product-variations.service';
 import type { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import type { CreateAdminProductDto } from './dto/create-admin-product.dto';
 
@@ -23,6 +24,7 @@ export class AdminService {
     private readonly cart: CartService,
     private readonly email: EmailService,
     private readonly verification: ArtisanVerificationService,
+    private readonly variations: ProductVariationsService,
   ) {}
 
   private splitCustomerName(fullName: string) {
@@ -355,7 +357,18 @@ export class AdminService {
       },
     });
 
-    return productToDto(created);
+    if (Array.isArray(dto.variationTypes) && dto.variationTypes.length > 0) {
+      await this.variations.replaceForProduct(created.id, dto.variationTypes);
+    }
+
+    const withRelations = await this.prisma.product.findUnique({
+      where: { id: created.id },
+      include: {
+        variationTypes: { include: { options: true } },
+      },
+    });
+
+    return productToDto(withRelations ?? created);
   }
 
   async listMessages(query: Record<string, unknown>) {

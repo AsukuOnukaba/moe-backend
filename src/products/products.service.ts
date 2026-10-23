@@ -14,6 +14,12 @@ type Pagination = {
 
 const APPROVED_STATUS = 'approved';
 
+function parseBoolQuery(value: unknown): boolean | undefined {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -42,10 +48,34 @@ export class ProductsService {
       typeof query?.country === 'string' && query.country.trim()
         ? query.country.trim()
         : undefined;
+    const state =
+      typeof query?.state === 'string' && query.state.trim()
+        ? query.state.trim()
+        : undefined;
+    const isBestSeller = parseBoolQuery(query?.isBestSeller);
+    const isTrending = parseBoolQuery(query?.isTrending);
+    const isNewArrival = parseBoolQuery(query?.isNewArrival);
+    const maxDeliveryDaysRaw = query?.maxDeliveryDays;
+    const maxDeliveryDays =
+      maxDeliveryDaysRaw !== undefined && maxDeliveryDaysRaw !== ''
+        ? Number(maxDeliveryDaysRaw)
+        : undefined;
+    const materials =
+      typeof query?.materials === 'string'
+        ? query.materials.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : Array.isArray(query?.materials)
+          ? query.materials.map((s: string) => String(s).trim()).filter(Boolean)
+          : [];
 
     const where: any = { status: APPROVED_STATUS, ...activeProductWhere };
     if (category) where.category = category;
     if (featured !== undefined) where.featured = featured;
+    if (isBestSeller !== undefined) where.isBestSeller = isBestSeller;
+    if (isTrending !== undefined) where.isTrending = isTrending;
+    if (isNewArrival !== undefined) where.isNewArrival = isNewArrival;
+    if (Number.isFinite(maxDeliveryDays) && (maxDeliveryDays as number) > 0) {
+      where.estimatedDeliveryDays = { lte: maxDeliveryDays };
+    }
 
     const styleTags =
       typeof query?.styleTags === 'string'
@@ -53,11 +83,22 @@ export class ProductsService {
         : Array.isArray(query?.styleTags)
           ? query.styleTags.map((s: string) => String(s).trim()).filter(Boolean)
           : [];
+    const andFilters: any[] = [];
     if (styleTags.length > 0) {
-      where.AND = styleTags.map((tag: string) => ({
-        tags: { contains: tag, mode: 'insensitive' },
-      }));
+      andFilters.push(
+        ...styleTags.map((tag: string) => ({
+          tags: { contains: tag, mode: 'insensitive' },
+        })),
+      );
     }
+    if (materials.length > 0) {
+      andFilters.push(
+        ...materials.map((material: string) => ({
+          materials: { contains: material, mode: 'insensitive' },
+        })),
+      );
+    }
+    if (andFilters.length > 0) where.AND = andFilters;
     if (
       (minPrice !== undefined && Number.isFinite(minPrice)) ||
       (maxPrice !== undefined && Number.isFinite(maxPrice))
@@ -67,10 +108,13 @@ export class ProductsService {
       if (maxPrice !== undefined && Number.isFinite(maxPrice)) where.price.lte = maxPrice;
     }
 
-    if (country) {
+    if (country || state) {
       where.provider = {
         artisanProfile: {
-          country: { equals: country, mode: 'insensitive' },
+          ...(country
+            ? { country: { equals: country, mode: 'insensitive' } }
+            : {}),
+          ...(state ? { state: { equals: state, mode: 'insensitive' } } : {}),
         },
       };
     }
@@ -112,8 +156,17 @@ export class ProductsService {
         return { price: 'desc' as const };
       case 'newest':
         return { updatedAt: 'desc' as const };
+      case 'bestSeller':
+        return [{ isBestSeller: 'desc' as const }, { name: 'asc' as const }];
+      case 'trending':
+        return [{ isTrending: 'desc' as const }, { name: 'asc' as const }];
+      case 'name_desc':
+        return { name: 'desc' as const };
+      case 'name_asc':
+      case 'name':
       default:
-        return { updatedAt: 'desc' as const };
+        // Req 4 — alphabetical unless the caller asked for another ranking.
+        return { name: 'asc' as const };
     }
   }
 

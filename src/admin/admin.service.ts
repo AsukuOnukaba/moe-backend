@@ -132,6 +132,12 @@ export class AdminService {
         email: a.user.email,
         brandName: a.brandName,
         businessName: a.businessName,
+        category: a.category,
+        serviceCategories: a.serviceCategories ?? [],
+        country: a.country,
+        state: a.state,
+        city: a.city,
+        location: a.location,
         createdAt: a.createdAt.toISOString(),
       })),
       pagination: {
@@ -637,18 +643,46 @@ export class AdminService {
     }
   }
 
-  async listProducts(page: number, pageSize: number, status?: string) {
+  async listProducts(
+    page: number,
+    pageSize: number,
+    status?: string,
+    extras?: { q?: string; category?: string; sort?: string },
+  ) {
     const skip = (page - 1) * pageSize;
-    const where = status
+    const q = extras?.q?.trim() ?? '';
+    const category = extras?.category?.trim() || undefined;
+    const where: Record<string, unknown> = status
       ? { status, ...activeProductWhere }
       : { ...activeProductWhere };
+    if (category) where.category = category;
+    if (q.length >= 2) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { provider: { name: { contains: q, mode: 'insensitive' } } },
+        {
+          provider: {
+            artisanProfile: { brandName: { contains: q, mode: 'insensitive' } },
+          },
+        },
+        {
+          provider: {
+            artisanProfile: { businessName: { contains: q, mode: 'insensitive' } },
+          },
+        },
+      ];
+    }
+    const orderBy =
+      extras?.sort === 'name' || extras?.sort === 'name_asc'
+        ? { name: 'asc' as const }
+        : { createdAt: 'desc' as const };
     const [totalItems, items] = await Promise.all([
       this.prisma.product.count({ where }),
       this.prisma.product.findMany({
         where,
         skip,
         take: pageSize,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: { provider: true },
       }),
     ]);

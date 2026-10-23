@@ -100,6 +100,48 @@ export class ServiceProvidersService {
         ),
       );
     }
+    const featured =
+      query?.featured === 'true' ? true : query?.featured === 'false' ? false : undefined;
+    if (featured !== undefined) {
+      providers = providers.filter((p) => p.featured === featured);
+    }
+
+    const customOrderEligible =
+      query?.customOrderEligible === 'true' ||
+      query?.customOrders === 'true' ||
+      query?.isCustomOrderEligible === 'true';
+    if (customOrderEligible) {
+      providers = providers.filter((p) => p.isCustomOrderEligible === true);
+    }
+
+    const maxDeliveryDays = Number(query?.maxDeliveryDays);
+    if (Number.isFinite(maxDeliveryDays) && maxDeliveryDays > 0) {
+      providers = providers.filter(
+        (p) => Number(p.estimatedDeliveryDays ?? 999) <= maxDeliveryDays,
+      );
+    }
+
+    const minRating = Number(query?.minRating);
+    if (Number.isFinite(minRating) && minRating > 0) {
+      providers = providers.filter(
+        (p) => Number(p.reviewCount ?? 0) > 0 && Number(p.rating ?? 0) >= minRating,
+      );
+    }
+
+    if (query?.hasBestSeller === 'true' || query?.bestSeller === 'true') {
+      const bestSellerProviders = await this.prisma.product.findMany({
+        where: { isBestSeller: true, ...publicProductWhere },
+        select: { providerId: true },
+        distinct: ['providerId'],
+      });
+      const ids = new Set(
+        bestSellerProviders
+          .map((row) => row.providerId)
+          .filter((id): id is number => typeof id === 'number'),
+      );
+      providers = providers.filter((p) => ids.has(p.id as number));
+    }
+
     if (q.length >= 2) {
       const needle = q.toLowerCase();
       providers = providers.filter((p) => {
@@ -124,6 +166,17 @@ export class ServiceProvidersService {
         return blob.includes(needle);
       });
     }
+
+    const sort = typeof query?.sort === 'string' ? query.sort : 'name';
+    providers.sort((a, b) => {
+      if (sort === 'rating') {
+        const ratingDelta = Number(b.rating ?? 0) - Number(a.rating ?? 0);
+        if (ratingDelta !== 0) return ratingDelta;
+      }
+      return String(a.brandName || '').localeCompare(String(b.brandName || ''), undefined, {
+        sensitivity: 'base',
+      });
+    });
 
     const totalItems = providers.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));

@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -16,10 +17,10 @@ export class CreateCustomOrderDto {
   @Min(1)
   artisanId!: number;
 
+  /** Required field; short descriptions allowed (0 was rejected by required rule via MinLength 1). Max 200. */
   @IsString()
-  @MinLength(50, {
-    message: 'Description must be at least 50 characters',
-  })
+  @MinLength(1, { message: 'Description is required' })
+  @MaxLength(200, { message: 'Description must be at most 200 characters' })
   description!: string;
 
   @IsArray()

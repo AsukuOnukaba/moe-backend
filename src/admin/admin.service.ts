@@ -1077,6 +1077,52 @@ export class AdminService {
     return { success: true };
   }
 
+  /** Recent artisan reviews for admin dashboard / reviews feed (no separate moderation status on ArtisanReview). */
+  async listRecentReviews(page = 1, pageSize = 20) {
+    const take = Math.max(1, Math.min(100, pageSize));
+    const skip = (Math.max(1, page) - 1) * take;
+    const [items, totalItems] = await Promise.all([
+      this.prisma.artisanReview.findMany({
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          artisan: {
+            select: {
+              userId: true,
+              brandName: true,
+              businessName: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.artisanReview.count(),
+    ]);
+
+    return {
+      data: items.map((r) => ({
+        id: r.id,
+        artisanId: r.artisanId,
+        artisanName:
+          r.artisan.brandName || r.artisan.businessName || `Artisan #${r.artisanId}`,
+        customerId: r.customerId,
+        customerName: r.customer.name,
+        rating: r.rating,
+        comment: r.comment ?? '',
+        status: 'published',
+        createdAt: r.createdAt.toISOString(),
+        href: `/admin/artisans/${r.artisanId}`,
+      })),
+      pagination: {
+        page: Math.max(1, page),
+        pageSize: take,
+        totalPages: Math.max(1, Math.ceil(totalItems / take)),
+        totalItems,
+      },
+    };
+  }
+
   listOrders(query: Record<string, unknown>) {
     return this.orders.adminList(query);
   }

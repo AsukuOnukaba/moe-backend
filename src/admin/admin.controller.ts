@@ -204,6 +204,17 @@ export class AdminController {
     await this.admin.removeProduct(Number(id), user.sub, reason);
   }
 
+  @Get('reviews')
+  listReviews(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.admin.listRecentReviews(
+      Math.max(1, Number(page ?? 1)),
+      Math.max(1, Math.min(100, Number(pageSize ?? 20))),
+    );
+  }
+
   @Get('users')
   listUsers(
     @Query('page') page?: string,

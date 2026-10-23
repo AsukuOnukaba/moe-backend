@@ -41,6 +41,13 @@ export class ConversationsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  getOne(@Req() req: Request, @Param('id') id: string) {
+    const user = req.user as AccessTokenPayload;
+    return this.conversations.getOne(user, Number(id));
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get(':id/messages')
   listMessages(@Req() req: Request, @Param('id') id: string) {
     const user = req.user as AccessTokenPayload;

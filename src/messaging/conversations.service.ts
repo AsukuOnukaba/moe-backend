@@ -251,6 +251,16 @@ export class ConversationsService {
     return row;
   }
 
+  async getOne(user: AccessTokenPayload, conversationId: number) {
+    const row = await this.getConversationForUser(user, conversationId);
+    const viewerRole =
+      user.role === 'artisan' ? 'artisan' : user.role === 'admin' ? 'admin' : 'customer';
+    return this.toConversationDto(
+      row,
+      this.computeUnreadCount(row.messages, viewerRole),
+    );
+  }
+
   async listMessages(user: AccessTokenPayload, conversationId: number) {
     const row = await this.getConversationForUser(user, conversationId);
     return row.messages.map((m) => this.toMessageDto(m));

@@ -75,7 +75,11 @@ export class CustomOrdersService {
 
   async create(user: AccessTokenPayload, dto: CreateCustomOrderDto) {
     if (user.role !== 'customer') {
-      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+      throw new ForbiddenException({
+        message:
+          'Only customer accounts can submit custom order requests. Sign in with a customer account to continue.',
+        code: 'FORBIDDEN',
+      });
     }
 
     const artisan = await this.prisma.artisanProfile.findUnique({
@@ -176,7 +180,7 @@ export class CustomOrdersService {
       type: 'system',
       title: 'Custom order sent',
       body: `Your custom order request has been sent to ${artisanName}. They will respond within 48 hours.`,
-      link: '/marketplace/orders',
+      link: '/marketplace/orders?tab=custom',
       idempotencyKey: `custom-order-customer-confirm:${row.id}`,
       bodyMaxLength: 200,
     });
@@ -253,7 +257,7 @@ export class CustomOrdersService {
         status === 'accepted'
           ? `${artisanName} accepted your custom order request.`
           : `${artisanName} declined your custom order request.`,
-      link: '/marketplace/orders',
+      link: '/marketplace/orders?tab=custom',
       idempotencyKey: `custom-order-${status}:${id}`,
     });
 

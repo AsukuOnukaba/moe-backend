@@ -656,7 +656,7 @@ export class AdminService {
       ? { status, ...activeProductWhere }
       : { ...activeProductWhere };
     if (category) where.category = category;
-    if (q.length >= 2) {
+    if (q.length >= 1) {
       where.OR = [
         { name: { contains: q, mode: 'insensitive' } },
         { provider: { name: { contains: q, mode: 'insensitive' } } },

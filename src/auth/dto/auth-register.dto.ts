@@ -1,5 +1,7 @@
 import {
+  Equals,
   IsArray,
+  IsBoolean,
   IsEmail,
   IsIn,
   IsOptional,
@@ -36,4 +38,11 @@ export class AuthRegisterDto {
   @IsArray()
   @IsString({ each: true })
   serviceCategories?: string[];
+
+  /** Required affirmation. Not stored; registration is rejected when it is not true. */
+  @IsBoolean()
+  @Equals(true, {
+    message: 'You must agree to the Terms of Service and Privacy Policy',
+  })
+  acceptedTerms!: boolean;
 }

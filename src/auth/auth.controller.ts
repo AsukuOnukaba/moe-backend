@@ -39,7 +39,9 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
-  @UseGuards(MoeThrottlerGuard)
+  // The app-wide throttler guard already applies this route's @Throttle.
+  // A second guard here counted each attempt twice and exhausted the
+  // 3-per-hour limit on the second request.
   @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @Post('register')
   async register(@Body() dto: AuthRegisterDto) {

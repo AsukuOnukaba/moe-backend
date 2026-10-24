@@ -205,7 +205,14 @@ export class AuthService {
     phone?: string;
     role?: 'customer' | 'artisan';
     serviceCategories?: string[];
+    acceptedTerms?: boolean;
   }) {
+    if (input.acceptedTerms !== true) {
+      throw new BadRequestException({
+        message: 'You must agree to the Terms of Service and Privacy Policy',
+        code: 'VALIDATION_ERROR',
+      });
+    }
     const role: MoeRole = (input.role ?? 'customer') as MoeRole;
     const existing = await this.prisma.user.findUnique({
       where: { email: input.email.toLowerCase() },

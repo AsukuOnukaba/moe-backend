@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { PrismaService } from '../database/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -55,7 +56,12 @@ export class CustomOrdersService {
       budget: row.budget,
       budgetMin: row.budgetMin,
       budgetMax: row.budgetMax,
-      deadline: row.deadline ? row.deadline.toISOString() : null,
+      deadline:
+      row.deadline instanceof Date
+        ? row.deadline.toISOString()
+        : row.deadline
+          ? String(row.deadline)
+          : null,
       specialInstructions: row.specialInstructions,
       categoryFields: row.categoryFields ?? null,
       status: row.status,
@@ -128,41 +134,55 @@ export class CustomOrdersService {
       }
     }
 
+    const customerId = Number(user.sub);
+    const artisanId = Number(dto.artisanId);
+    if (!Number.isInteger(customerId) || !Number.isInteger(artisanId)) {
+      throw new BadRequestException({
+        message: 'Invalid custom order request',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
     const customer = await this.prisma.user.findUnique({
-      where: { id: user.sub },
+      where: { id: customerId },
       select: { name: true },
     });
     const customerName = customer?.name?.trim() || 'A customer';
     const artisanName =
       artisan.brandName || artisan.businessName || artisan.user.name;
+    const specialInstructions = dto.specialInstructions?.trim() || null;
+    const categoryFields =
+      dto.categoryFields && Object.keys(dto.categoryFields).length
+        ? dto.categoryFields
+        : undefined;
 
-    const row = await this.prisma.customOrder.create({
-      data: {
-        artisanId: dto.artisanId,
-        customerId: user.sub,
-        description: dto.description.trim(),
-        referenceImages: dto.referenceImages ?? [],
-        budget: budgetMax,
-        budgetMin,
-        budgetMax,
-        deadline,
-        specialInstructions: dto.specialInstructions?.trim() || null,
-        categoryFields: (dto.categoryFields as object) ?? undefined,
-        status: 'pending',
-      },
-      include: this.includeNames,
+    const row = await this.insertCustomOrder({
+      artisanId,
+      customerId,
+      description: dto.description.trim(),
+      referenceImages: dto.referenceImages ?? [],
+      budget: budgetMax,
+      budgetMin,
+      budgetMax,
+      deadline,
+      specialInstructions,
+      categoryFields,
     });
 
     const artisanBody = `You have a new custom order request from ${customerName}. Log in to review and respond.`;
-    await this.notifications.create({
-      userId: dto.artisanId,
-      type: 'system',
-      title: 'New custom order request',
-      body: artisanBody,
-      link: '/artisan/dashboard',
-      idempotencyKey: `custom-order-created:${row.id}`,
-      bodyMaxLength: 200,
-    });
+    try {
+      await this.notifications.create({
+        userId: artisanId,
+        type: 'system',
+        title: 'New custom order request',
+        body: artisanBody,
+        link: '/artisan/dashboard',
+        idempotencyKey: `custom-order-created:${row.id}`,
+        bodyMaxLength: 200,
+      });
+    } catch (error) {
+      console.error('[custom-orders] artisan notification failed', error);
+    }
 
     try {
       await this.email.send({
@@ -175,17 +195,125 @@ export class CustomOrdersService {
       // email is best-effort
     }
 
-    await this.notifications.create({
-      userId: user.sub,
-      type: 'system',
-      title: 'Custom order sent',
-      body: `Your custom order request has been sent to ${artisanName}. They will respond within 48 hours.`,
-      link: '/marketplace/orders?tab=custom',
-      idempotencyKey: `custom-order-customer-confirm:${row.id}`,
-      bodyMaxLength: 200,
-    });
+    try {
+      await this.notifications.create({
+        userId: customerId,
+        type: 'system',
+        title: 'Custom order sent',
+        body: `Your custom order request has been sent to ${artisanName}. They will respond within 48 hours.`,
+        link: '/marketplace/orders?tab=custom',
+        idempotencyKey: `custom-order-customer-confirm:${row.id}`,
+        bodyMaxLength: 200,
+      });
+    } catch (error) {
+      console.error('[custom-orders] customer notification failed', error);
+    }
 
     return this.toDto(row);
+  }
+
+  /**
+   * Writes the full commission row. If the database has not yet picked up the
+   * budget/details columns, save the same request in the original columns so
+   * the customer is not left with an internal server error.
+   */
+  private async insertCustomOrder(input: {
+    artisanId: number;
+    customerId: number;
+    description: string;
+    referenceImages: string[];
+    budget: number | null;
+    budgetMin: number | null;
+    budgetMax: number | null;
+    deadline: Date | null;
+    specialInstructions: string | null;
+    categoryFields?: Record<string, unknown>;
+  }) {
+    const full = {
+      artisanId: input.artisanId,
+      customerId: input.customerId,
+      description: input.description,
+      referenceImages: input.referenceImages,
+      budget: input.budget,
+      budgetMin: input.budgetMin,
+      budgetMax: input.budgetMax,
+      deadline: input.deadline,
+      specialInstructions: input.specialInstructions,
+      categoryFields: (input.categoryFields as object) ?? undefined,
+      status: 'pending' as const,
+    };
+    try {
+      return await this.prisma.customOrder.create({
+        data: full,
+        include: this.includeNames,
+      });
+    } catch (error) {
+      if (!this.isMissingColumn(error)) throw this.asRequestError(error);
+      console.error('[custom-orders] saving without extended columns', error);
+      return this.prisma.customOrder.create({
+        data: {
+          artisanId: input.artisanId,
+          customerId: input.customerId,
+          description: this.describeLegacyRequest(input),
+          referenceImages: input.referenceImages,
+          budget: input.budget,
+          status: 'pending',
+        },
+        include: this.includeNames,
+      });
+    }
+  }
+
+  private describeLegacyRequest(input: {
+    description: string;
+    budgetMin: number | null;
+    budgetMax: number | null;
+    deadline: Date | null;
+    specialInstructions: string | null;
+    categoryFields?: Record<string, unknown>;
+  }) {
+    const lines = [input.description];
+    if (input.budgetMin != null || input.budgetMax != null) {
+      lines.push(
+        `Budget: ${input.budgetMin ?? '—'} – ${input.budgetMax ?? '—'}`,
+      );
+    }
+    if (input.deadline) {
+      lines.push(`Deadline: ${input.deadline.toISOString().slice(0, 10)}`);
+    }
+    if (input.specialInstructions) {
+      lines.push(`Instructions: ${input.specialInstructions}`);
+    }
+    for (const [key, value] of Object.entries(input.categoryFields ?? {})) {
+      if (value == null || value === '') continue;
+      lines.push(`${key}: ${String(value)}`);
+    }
+    return lines.join('\n');
+  }
+
+  private isMissingColumn(error: unknown) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === 'P2021' || error.code === 'P2022')
+    ) {
+      return true;
+    }
+    const message = error instanceof Error ? error.message : '';
+    return /column .* does not exist/i.test(message);
+  }
+
+  private asRequestError(error: unknown): unknown {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2003'
+    ) {
+      return new NotFoundException({
+        message: 'Artisan not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+    console.error('[custom-orders] create failed', error);
+    return error;
   }
 
   async listForArtisan(user: AccessTokenPayload) {

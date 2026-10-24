@@ -584,8 +584,7 @@ function mapProductArtisan(p: {
       rating: p.artisan.rating ?? 0,
       reviewCount: p.artisan.reviewCount ?? 0,
       verified: p.artisan.verified ?? false,
-      isCustomOrderEligible:
-        p.artisan.isCustomOrderEligible || p.artisan.customOrdersEnabled,
+      isCustomOrderEligible: p.artisan.isCustomOrderEligible === true,
       customOrdersEnabled: p.artisan.customOrdersEnabled ?? false,
     };
   }
@@ -601,8 +600,7 @@ function mapProductArtisan(p: {
       rating: ap.rating ?? 0,
       reviewCount: ap.reviewCount ?? 0,
       verified: ap.verified ?? false,
-      isCustomOrderEligible:
-        ap.isCustomOrderEligible || ap.customOrdersEnabled,
+      isCustomOrderEligible: ap.isCustomOrderEligible === true,
       customOrdersEnabled: ap.customOrdersEnabled ?? false,
     };
   }

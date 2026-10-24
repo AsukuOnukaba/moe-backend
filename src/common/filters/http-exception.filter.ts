@@ -51,7 +51,27 @@ export class MoeHttpExceptionFilter implements ExceptionFilter {
       }
     }
 
+    if (
+      exception instanceof Error &&
+      ((exception as { type?: string }).type === 'entity.too.large' ||
+        (exception as { status?: number }).status === 413)
+    ) {
+      return res.status(413).json({
+        message:
+          'That request is too large. Remove a reference image and try again.',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
     const isHttp = exception instanceof HttpException;
+    if (!isHttp) {
+      console.error(
+        '[http] unhandled',
+        req.method,
+        req.url,
+        exception instanceof Error ? exception.stack : exception,
+      );
+    }
     const status = isHttp
       ? exception.getStatus()
       : HttpStatus.INTERNAL_SERVER_ERROR;

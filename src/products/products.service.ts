@@ -129,11 +129,27 @@ export class ProductsService {
     }
 
     const sortKey = typeof query?.sort === 'string' ? query.sort : '';
+    const collection =
+      typeof query?.collection === 'string' ? query.collection.trim() : '';
     const nameDirection = sortKey === 'name_desc' ? -1 : sortKey === 'price_asc' || sortKey === 'price_desc' || sortKey === 'newest' || sortKey === 'bestSeller' || sortKey === 'trending' ? 0 : 1;
 
     let totalItems: number;
     let items: Awaited<ReturnType<PrismaService['product']['findMany']>>;
-    if (nameDirection !== 0) {
+    let orderCounts: Map<number, number> | null = null;
+    if (collection === 'best-sellers' || sortKey === 'bestSeller') {
+      const ranked = await this.rankBestSellers(where, sortKey);
+      orderCounts = ranked.counts;
+      totalItems = ranked.ids.length;
+      const pageIds = ranked.ids.slice(skip, skip + pageSize);
+      const pageRows = pageIds.length
+        ? await this.prisma.product.findMany({
+            where: { id: { in: pageIds } },
+            include: productArtisanInclude,
+          })
+        : [];
+      const byId = new Map(pageRows.map((row) => [row.id, row]));
+      items = pageIds.map((id) => byId.get(id)).filter((row) => row !== undefined);
+    } else if (nameDirection !== 0) {
       const rows = await this.prisma.product.findMany({
         where,
         select: { id: true, name: true },
@@ -175,9 +191,63 @@ export class ProductsService {
         artisanName: artisanDisplayName(
           (item as { provider?: Parameters<typeof artisanDisplayName>[0] }).provider,
         ),
+        createdAt:
+          item.createdAt instanceof Date ? item.createdAt.toISOString() : undefined,
+        ...(orderCounts
+          ? { orderCount: orderCounts.get(item.id) ?? 0 }
+          : {}),
       })),
       pagination,
     };
+  }
+
+  /**
+   * Best Sellers: a product marked isBestSeller, or one with at least one
+   * order that is not cancelled or rejected. Ranked by that order count.
+   * The flag alone is not required, and products are not invented to fill
+   * the list.
+   */
+  private async rankBestSellers(where: Record<string, unknown>, sortKey: string) {
+    const scope = { ...where };
+    delete scope.isBestSeller;
+    const candidates = await this.prisma.product.findMany({
+      where: scope,
+      select: {
+        id: true,
+        name: true,
+        isBestSeller: true,
+        price: true,
+        createdAt: true,
+      },
+    });
+    const ids = candidates.map((row) => row.id);
+    const grouped = ids.length
+      ? await this.prisma.order.groupBy({
+          by: ['productId'],
+          where: {
+            productId: { in: ids },
+            status: { notIn: ['cancelled', 'rejected'] },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const counts = new Map(grouped.map((row) => [row.productId, row._count._all]));
+    const ranked = candidates.filter(
+      (row) => row.isBestSeller || (counts.get(row.id) ?? 0) > 0,
+    );
+    const byName = (a: { name: string; id: number }, b: { name: string; id: number }) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id - b.id;
+    ranked.sort((a, b) => {
+      if (sortKey === 'name_asc') return byName(a, b);
+      if (sortKey === 'name_desc') return byName(b, a);
+      if (sortKey === 'price_asc') return (a.price ?? 0) - (b.price ?? 0) || byName(a, b);
+      if (sortKey === 'price_desc') return (b.price ?? 0) - (a.price ?? 0) || byName(a, b);
+      if (sortKey === 'newest') {
+        return b.createdAt.getTime() - a.createdAt.getTime() || byName(a, b);
+      }
+      return (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0) || byName(a, b);
+    });
+    return { ids: ranked.map((row) => row.id), counts };
   }
 
   private getSort(query: any) {
@@ -188,7 +258,8 @@ export class ProductsService {
       case 'price_desc':
         return { price: 'desc' as const };
       case 'newest':
-        return { updatedAt: 'desc' as const };
+        // New Arrivals uses creation time. Products have no publishedAt column.
+        return { createdAt: 'desc' as const };
       case 'bestSeller':
         return [{ isBestSeller: 'desc' as const }, { name: 'asc' as const }];
       case 'trending':

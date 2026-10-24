@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { productToDto } from '../common/product-mapper';
+import { artisanDisplayName, productArtisanInclude, productToDto } from '../common/product-mapper';
 import { ArtisanScoringService } from '../scoring/artisan-scoring.service';
 import {
   isSectionKey,
@@ -245,15 +245,29 @@ export class SectionsService {
       expectedType,
     );
 
-    let items = curated;
-    if (items.length < MIN_SECTION_ITEMS) {
+    // Newest-product padding used to run for every product section, so empty
+    // Featured Picks, Editor's Recommendations, and Seasonal Picks all showed
+    // the same four products and duplicated New Arrivals. Keep that fill only
+    // on featured_picks. Artisan sections keep the score/rating fill. Seasonal
+    // keyword matches stay in getSeasonalMatched.
+    let items: Array<Record<string, unknown>> = curated.map((item) => ({
+      ...item,
+      selection: 'curated',
+    }));
+    const pad =
+      (sectionKey === 'featured_picks' || expectedType === 'artisan') &&
+      items.length < MIN_SECTION_ITEMS;
+    if (pad) {
       const exclude = new Set(items.map((i) => String(i.id)));
       const fill = await this.algorithmicFallback(
         expectedType,
         MIN_SECTION_ITEMS - items.length,
         exclude,
       );
-      items = [...items, ...fill];
+      items = [
+        ...items,
+        ...fill.map((item) => ({ ...item, selection: 'algorithm' as const })),
+      ];
     }
 
     return {
@@ -285,7 +299,7 @@ export class SectionsService {
     const exclude = new Set(curated.map((i) => String(i.id)));
     const terms = section.keywords.map((k) => k.toLowerCase()).filter(Boolean);
 
-    let matched: ReturnType<typeof productToDto>[] = [];
+    let matched: Array<Record<string, unknown>> = [];
     if (terms.length > 0) {
       const or = terms.flatMap((term) => [
         { name: { contains: term, mode: 'insensitive' as const } },
@@ -306,18 +320,28 @@ export class SectionsService {
         },
         orderBy: { createdAt: 'desc' },
         take: 40,
-        include: { keywords: { include: { keyword: true } } },
+        include: {
+          keywords: { include: { keyword: true } },
+          ...productArtisanInclude,
+        },
       });
       matched = products
         .filter((p) => !exclude.has(String(p.id)))
-        .map((p) => this.productPublic(p));
+        .map((p) => ({
+          ...this.productPublic(p),
+          artisanName: artisanDisplayName(p.provider),
+          selection: 'algorithm' as const,
+        }));
     }
 
     return {
       sectionKey: section.sectionKey,
       label: section.label,
       keywords: section.keywords,
-      items: [...curated, ...matched],
+      items: [
+        ...curated.map((item) => ({ ...item, selection: 'curated' as const })),
+        ...matched,
+      ],
     };
   }
 
@@ -332,12 +356,18 @@ export class SectionsService {
         where: { status: 'approved', deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: need + exclude.size + 10,
-        include: { keywords: { include: { keyword: true } } },
+        include: {
+          keywords: { include: { keyword: true } },
+          ...productArtisanInclude,
+        },
       });
       return products
         .filter((p) => !exclude.has(String(p.id)))
         .slice(0, need)
-        .map((p) => this.productPublic(p));
+        .map((p) => ({
+          ...this.productPublic(p),
+          artisanName: artisanDisplayName(p.provider),
+        }));
     }
 
     // Artisans: prefer highest composite score (internal), then rating.
@@ -388,9 +418,17 @@ export class SectionsService {
       if (type === 'product') {
         const p = await this.prisma.product.findFirst({
           where: { id, status: 'approved', deletedAt: null },
-          include: { keywords: { include: { keyword: true } } },
+          include: {
+            keywords: { include: { keyword: true } },
+            ...productArtisanInclude,
+          },
         });
-        if (p) out.push(this.productPublic(p));
+        if (p) {
+          out.push({
+            ...this.productPublic(p),
+            artisanName: artisanDisplayName(p.provider),
+          });
+        }
       } else {
         const a = await this.prisma.artisanProfile.findFirst({
           where: { userId: id, status: 'approved' },

@@ -169,45 +169,137 @@ export class CustomOrdersService {
       categoryFields,
     });
 
-    const artisanBody = `You have a new custom order request from ${customerName}. Log in to review and respond.`;
-    try {
-      await this.notifications.create({
-        userId: artisanId,
-        type: 'system',
-        title: 'New custom order request',
-        body: artisanBody,
-        link: '/artisan/dashboard',
-        idempotencyKey: `custom-order-created:${row.id}`,
-        bodyMaxLength: 200,
-      });
-    } catch (error) {
-      console.error('[custom-orders] artisan notification failed', error);
-    }
+    // Tell the customer and the admin queue after the row exists. Do not email
+    // the artisan or wait on mail — that is what made submit feel stuck, and
+    // the artisan must not see the request until an admin sends it.
+    void this.notifyReviewQueued(row.id, customerId, customerName, artisanName).catch(
+      (error) => console.error('[custom-orders] review notify failed', error),
+    );
 
-    try {
-      await this.email.send({
-        to: artisan.user.email,
-        subject: 'New custom order request — MOE Africa',
-        html: `<p>${artisanBody}</p>`,
-        text: artisanBody,
-      });
-    } catch {
-      // email is best-effort
-    }
+    return this.toDto(row);
+  }
 
+  private async notifyReviewQueued(
+    orderId: string,
+    customerId: number,
+    customerName: string,
+    artisanName: string,
+  ) {
     try {
       await this.notifications.create({
         userId: customerId,
         type: 'system',
-        title: 'Custom order sent',
-        body: `Your custom order request has been sent to ${artisanName}. They will respond within 48 hours.`,
+        title: 'Custom order received',
+        body: `MOE is reviewing your request for ${artisanName}. The artisan will see it after we send it on.`,
         link: '/marketplace/orders?tab=custom',
-        idempotencyKey: `custom-order-customer-confirm:${row.id}`,
+        idempotencyKey: `custom-order-customer-confirm:${orderId}`,
         bodyMaxLength: 200,
       });
     } catch (error) {
       console.error('[custom-orders] customer notification failed', error);
     }
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: { name: 'admin' } } } },
+      select: { id: true },
+    });
+    await Promise.all(
+      admins.map((admin) =>
+        this.notifications
+          .create({
+            userId: admin.id,
+            type: 'system',
+            title: 'Custom order to review',
+            body: `${customerName} requested a custom order from ${artisanName}.`,
+            link: '/admin/custom-orders',
+            idempotencyKey: `custom-order-review:${orderId}:${admin.id}`,
+            bodyMaxLength: 200,
+          })
+          .catch((error) =>
+            console.error('[custom-orders] admin notification failed', error),
+          ),
+      ),
+    );
+  }
+
+  /** Admin releases a reviewed request to the artisan. */
+  async releaseToArtisan(id: string) {
+    const existing = await this.prisma.customOrder.findUnique({
+      where: { id },
+      include: {
+        ...this.includeNames,
+        artisan: {
+          select: {
+            brandName: true,
+            businessName: true,
+            user: { select: { email: true, name: true } },
+          },
+        },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundException({
+        message: 'Custom order not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+    if (existing.status !== 'in_review') {
+      throw new BadRequestException({
+        message: 'This request has already been sent to the artisan',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const row = await this.prisma.customOrder.update({
+      where: { id },
+      data: { status: 'pending' },
+      include: this.includeNames,
+    });
+
+    const artisanName =
+      existing.artisan?.brandName ||
+      existing.artisan?.businessName ||
+      existing.artisan?.user.name ||
+      'the artisan';
+    const customerName = existing.customer?.name?.trim() || 'A customer';
+    const artisanBody = `${customerName} requested a custom order. Log in to review and respond.`;
+    void this.notifications
+      .create({
+        userId: existing.artisanId,
+        type: 'system',
+        title: 'New custom order request',
+        body: artisanBody,
+        link: '/artisan/dashboard',
+        idempotencyKey: `custom-order-released:${id}`,
+        bodyMaxLength: 200,
+      })
+      .catch((error) =>
+        console.error('[custom-orders] artisan notification failed', error),
+      );
+    const artisanEmail = existing.artisan?.user.email;
+    if (artisanEmail) {
+      void this.email
+        .send({
+          to: artisanEmail,
+          subject: 'New custom order request — MOE Africa',
+          html: `<p>${artisanBody}</p>`,
+          text: artisanBody,
+        })
+        .catch(() => undefined);
+    }
+    void this.notifications
+      .create({
+        userId: existing.customerId,
+        type: 'system',
+        title: 'Custom order sent to artisan',
+        body: `Your request has been sent to ${artisanName}. They will respond within 48 hours.`,
+        link: '/marketplace/orders?tab=custom',
+        idempotencyKey: `custom-order-released-customer:${id}`,
+        bodyMaxLength: 200,
+      })
+      .catch((error) =>
+        console.error('[custom-orders] customer release notify failed', error),
+      );
 
     return this.toDto(row);
   }
@@ -240,7 +332,7 @@ export class CustomOrdersService {
       deadline: input.deadline,
       specialInstructions: input.specialInstructions,
       categoryFields: (input.categoryFields as object) ?? undefined,
-      status: 'pending' as const,
+      status: 'in_review' as const,
     };
     try {
       return await this.prisma.customOrder.create({
@@ -257,7 +349,7 @@ export class CustomOrdersService {
           description: this.describeLegacyRequest(input),
           referenceImages: input.referenceImages,
           budget: input.budget,
-          status: 'pending',
+          status: 'in_review',
         },
         include: this.includeNames,
       });
@@ -321,7 +413,7 @@ export class CustomOrdersService {
       throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
     }
     const rows = await this.prisma.customOrder.findMany({
-      where: { artisanId: user.sub },
+      where: { artisanId: user.sub, status: { not: 'in_review' } },
       include: this.includeNames,
       orderBy: { createdAt: 'desc' },
     });

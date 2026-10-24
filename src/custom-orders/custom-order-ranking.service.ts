@@ -36,7 +36,7 @@ export class CustomOrderRankingService {
     }
 
     const orders = await this.prisma.customOrder.findMany({
-      where: { artisanId },
+      where: { artisanId, status: { not: 'in_review' } },
       select: {
         status: true,
         createdAt: true,

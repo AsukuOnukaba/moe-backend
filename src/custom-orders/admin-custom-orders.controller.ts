@@ -54,6 +54,11 @@ export class AdminCustomOrdersController {
     });
   }
 
+  @Post(':id/release')
+  release(@Param('id') id: string) {
+    return this.customOrders.releaseToArtisan(id);
+  }
+
   @Get(':id')
   getOne(@Param('id') id: string) {
     return this.customOrders.getAdminById(id);

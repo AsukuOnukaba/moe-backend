@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpCode,
   Body,
   Controller,
   Get,
@@ -12,7 +13,6 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -21,6 +21,9 @@ import { AuthLoginDto } from './dto/auth-login.dto';
 import { AuthRegisterDto } from './dto/auth-register.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
 import { AuthClerkVerifyDto } from './dto/auth-clerk-verify.dto';
+import { OAuthConsentDto } from './dto/oauth-consent.dto';
+import { GoogleOauthGuard } from './guards/google-oauth.guard';
+import { issueOAuthConsentTicket } from './oauth-consent';
 import { AuthProfilePatchDto } from './dto/auth-profile-patch.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -77,23 +80,40 @@ export class AuthController {
     return this.auth.resetPasswordWithToken(dto.token, dto.newPassword);
   }
 
+  @HttpCode(200)
+  @Post('oauth-consent')
+  oauthConsent(@Body() dto: OAuthConsentDto) {
+    return issueOAuthConsentTicket(dto.acceptedTerms);
+  }
+
   @Get('google')
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleOauthGuard)
   googleAuth() {
     return;
   }
 
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleOauthGuard)
   async googleCallback(@Req() req: Request, @Res() res: Response) {
-    const result = await this.auth.handleGoogleLogin(req.user as any);
     const redirect =
       this.config.get<string>('GOOGLE_SUCCESS_REDIRECT') ??
       'http://localhost:8080/auth/callback';
-    const url = new URL(redirect);
-    url.searchParams.set('token', result.token);
-    url.searchParams.set('refreshToken', result.refreshToken);
-    return res.redirect(url.toString());
+    const consentState = typeof req.query.state === 'string' ? req.query.state : undefined;
+    try {
+      const result = await this.auth.handleGoogleLogin(req.user as any, consentState);
+      const url = new URL(redirect);
+      url.searchParams.set('token', result.token);
+      url.searchParams.set('refreshToken', result.refreshToken);
+      return res.redirect(url.toString());
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        const signup = new URL('/auth', new URL(redirect).origin);
+        signup.searchParams.set('tab', 'signup');
+        signup.searchParams.set('error', 'consent');
+        return res.redirect(signup.toString());
+      }
+      throw error;
+    }
   }
 
   /** Exchange a Clerk session token for MOE access/refresh tokens. */

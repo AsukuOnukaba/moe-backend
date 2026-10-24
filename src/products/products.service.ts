@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
+import { catalogueProviderFilter, uniqueIds } from '../common/canonical-storefronts';
 import { PrismaService } from '../database/prisma.service';
 import { artisanDisplayName, productArtisanInclude, productToDto } from '../common/product-mapper';
 import { EventsService } from '../events/events.service';
@@ -34,6 +35,10 @@ export class ProductsService {
 
     const q = typeof query?.q === 'string' ? query.q.trim() : '';
     const category = typeof query?.category === 'string' ? query.category : undefined;
+    const categories =
+      typeof query?.categories === 'string'
+        ? query.categories.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : [];
     const featured =
       query?.featured === 'true' ? true : query?.featured === 'false' ? false : undefined;
 
@@ -84,12 +89,20 @@ export class ProductsService {
           ? query.styleTags.map((s: string) => String(s).trim()).filter(Boolean)
           : [];
     const andFilters: any[] = [];
-    if (styleTags.length > 0) {
-      andFilters.push(
-        ...styleTags.map((tag: string) => ({
-          tags: { contains: tag, mode: 'insensitive' },
+    if (categories.length > 1) {
+      andFilters.push({
+        OR: categories.map((value: string) => ({
+          category: { equals: value, mode: 'insensitive' },
         })),
-      );
+      });
+    }
+    if (styleTags.length > 0) {
+      const tagClauses = styleTags.map((tag: string) => ({
+        tags: { contains: tag, mode: 'insensitive' },
+      }));
+      // Homepage shelves match any selected tag. The default remains every tag.
+      if (query?.styleMatch === 'any') andFilters.push({ OR: tagClauses });
+      else andFilters.push(...tagClauses);
     }
     if (materials.length > 0) {
       andFilters.push(
@@ -128,6 +141,9 @@ export class ProductsService {
       ];
     }
 
+    const hiddenProviders = await catalogueProviderFilter(this.prisma);
+    if (hiddenProviders) where.providerId = hiddenProviders;
+
     const sortKey = typeof query?.sort === 'string' ? query.sort : '';
     const collection =
       typeof query?.collection === 'string' ? query.collection.trim() : '';
@@ -136,11 +152,24 @@ export class ProductsService {
     let totalItems: number;
     let items: Awaited<ReturnType<PrismaService['product']['findMany']>>;
     let orderCounts: Map<number, number> | null = null;
-    if (collection === 'best-sellers' || sortKey === 'bestSeller') {
+    if (collection === 'deals' || collection === 'styles') {
+      const rankedIds = uniqueIds(await this.rankHomepageShelf(where, query, collection));
+      totalItems = rankedIds.length;
+      const pageIds = rankedIds.slice(skip, skip + pageSize);
+      const pageRows = pageIds.length
+        ? await this.prisma.product.findMany({
+            where: { id: { in: pageIds } },
+            include: productArtisanInclude,
+          })
+        : [];
+      const byId = new Map(pageRows.map((row) => [row.id, row]));
+      items = pageIds.map((id) => byId.get(id)).filter((row) => row !== undefined);
+    } else if (collection === 'best-sellers' || sortKey === 'bestSeller') {
       const ranked = await this.rankBestSellers(where, sortKey);
       orderCounts = ranked.counts;
-      totalItems = ranked.ids.length;
-      const pageIds = ranked.ids.slice(skip, skip + pageSize);
+      const rankedIds = uniqueIds(ranked.ids);
+      totalItems = rankedIds.length;
+      const pageIds = rankedIds.slice(skip, skip + pageSize);
       const pageRows = pageIds.length
         ? await this.prisma.product.findMany({
             where: { id: { in: pageIds } },
@@ -159,8 +188,9 @@ export class ProductsService {
           nameDirection * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
           a.id - b.id,
       );
-      totalItems = rows.length;
-      const pageIds = rows.slice(skip, skip + pageSize).map((row) => row.id);
+      const orderedIds = uniqueIds(rows.map((row) => row.id));
+      totalItems = orderedIds.length;
+      const pageIds = orderedIds.slice(skip, skip + pageSize);
       const pageRows = pageIds.length
         ? await this.prisma.product.findMany({
             where: { id: { in: pageIds } },
@@ -248,6 +278,53 @@ export class ProductsService {
       return (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0) || byName(a, b);
     });
     return { ids: ranked.map((row) => row.id), counts };
+  }
+
+  /**
+   * Homepage Deals For You: current price is below the original price.
+   * Homepage Styles For You: any of Traditional, Afrocentric, Modern, Elegant.
+   */
+  private async rankHomepageShelf(
+    where: any,
+    query: any,
+    collection: 'deals' | 'styles',
+  ): Promise<number[]> {
+    const rows = await this.prisma.product.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        originalPrice: true,
+        tags: true,
+        createdAt: true,
+      },
+    });
+    const styleTags = new Set(['traditional', 'afrocentric', 'modern', 'elegant']);
+    const matched = rows.filter((row) => {
+      if (collection === 'deals') {
+        const price = typeof row.price === 'number' ? row.price : 0;
+        return typeof row.originalPrice === 'number' && row.originalPrice > price;
+      }
+      const tags = (row.tags ?? '')
+        .split(',')
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean);
+      return tags.some((tag) => styleTags.has(tag));
+    });
+    const sortKey = typeof query?.sort === 'string' ? query.sort : '';
+    const byName = (a: { name: string; id: number }, b: { name: string; id: number }) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id - b.id;
+    matched.sort((a, b) => {
+      if (sortKey === 'name_desc') return byName(b, a);
+      if (sortKey === 'price_asc') return (a.price ?? 0) - (b.price ?? 0) || byName(a, b);
+      if (sortKey === 'price_desc') return (b.price ?? 0) - (a.price ?? 0) || byName(a, b);
+      if (sortKey === 'newest') {
+        return b.createdAt.getTime() - a.createdAt.getTime() || byName(a, b);
+      }
+      return byName(a, b);
+    });
+    return matched.map((row) => row.id);
   }
 
   private getSort(query: any) {
@@ -399,16 +476,20 @@ export class ProductsService {
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 10)));
     const skip = (page - 1) * pageSize;
 
+    const hiddenProviders = await catalogueProviderFilter(this.prisma);
+    const where = {
+      status: APPROVED_STATUS,
+      ...activeProductWhere,
+      ...(hiddenProviders ? { providerId: hiddenProviders } : {}),
+    };
     const items = await this.prisma.product.findMany({
-      where: { status: APPROVED_STATUS, ...activeProductWhere },
+      where,
       orderBy: { updatedAt: 'desc' },
       skip,
       take: pageSize,
     });
 
-    const totalItems = await this.prisma.product.count({
-      where: { status: APPROVED_STATUS, ...activeProductWhere },
-    });
+    const totalItems = await this.prisma.product.count({ where });
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
     return {

@@ -21,6 +21,11 @@ import type {
 } from './types/jwt-payload';
 import type { ErrorCode } from '../common/errors/error-codes';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import {
+  clerkSignupAcceptedTerms,
+  CONSENT_REQUIRED,
+  consumeOAuthConsentTicket,
+} from './oauth-consent';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 function authError(message: string, code: ErrorCode): UnauthorizedException {
@@ -296,12 +301,15 @@ export class AuthService {
     };
   }
 
-  async handleGoogleLogin(profile: {
-    googleId: string;
-    email: string;
-    name: string;
-    avatarUrl: string | null;
-  }) {
+  async handleGoogleLogin(
+    profile: {
+      googleId: string;
+      email: string;
+      name: string;
+      avatarUrl: string | null;
+    },
+    consentState?: string,
+  ) {
     let user = await this.prisma.user.findFirst({
       where: {
         OR: [{ googleId: profile.googleId }, { email: profile.email }],
@@ -309,6 +317,12 @@ export class AuthService {
     });
 
     if (!user) {
+      if (!consumeOAuthConsentTicket(consentState)) {
+        throw new BadRequestException({
+          message: CONSENT_REQUIRED,
+          code: 'VALIDATION_ERROR',
+        });
+      }
       const passwordHash = await bcrypt.hash(randomUUID(), 12);
       user = await this.prisma.user.create({
         data: {
@@ -419,6 +433,12 @@ export class AuthService {
         // First-time Clerk Google sign-up. The frontend passes the chosen account
         // type via signUp.authenticateWithRedirect({ unsafeMetadata: { role, serviceCategories } }),
         // which Clerk copies onto the user — mirror what /auth/register does with it.
+        if (!clerkSignupAcceptedTerms(clerkUser.unsafeMetadata)) {
+          throw new BadRequestException({
+            message: CONSENT_REQUIRED,
+            code: 'VALIDATION_ERROR',
+          });
+        }
         const { role: requestedRole, serviceCategories } = this.parseClerkSignUpMetadata(
           clerkUser.unsafeMetadata,
         );

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
+import { catalogueProviderFilter } from '../common/canonical-storefronts';
 import { PrismaService } from '../database/prisma.service';
 import { artisanDisplayName, productToDto, toTagArray } from '../common/product-mapper';
 import { toStringList } from '../common/string-list';
@@ -127,6 +128,8 @@ export class SearchService {
     const includeProducts = t === 'all' || t === 'products';
     const includeProviders = t === 'all' || t === 'providers';
     const includeCategories = t === 'all' || t === 'categories';
+    const hiddenProviders = await catalogueProviderFilter(this.prisma);
+    const hidden = new Set(hiddenProviders?.notIn ?? []);
 
     const [products, providers] = await Promise.all([
       includeProducts
@@ -134,6 +137,7 @@ export class SearchService {
             where: {
               status: 'approved',
               ...activeProductWhere,
+              ...(hiddenProviders ? { providerId: hiddenProviders } : {}),
               OR: [
                 { name: { contains: qLower, mode: 'insensitive' } },
                 { description: { contains: qLower, mode: 'insensitive' } },
@@ -248,7 +252,14 @@ export class SearchService {
         : Promise.resolve([]),
     ]);
 
+    const seenProductIds = new Set<number>();
     const rankedProducts = (products as any[])
+      .filter((p) => {
+        const id = Number(p.id);
+        if (!Number.isFinite(id) || seenProductIds.has(id)) return false;
+        seenProductIds.add(id);
+        return true;
+      })
       .map((p) => ({ p, score: productRelevance(p, qLower) }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
@@ -260,6 +271,7 @@ export class SearchService {
       }));
 
     const rankedProviders = (providers as any[])
+      .filter((u) => !hidden.has(Number(u.id)))
       .map((u) => ({ u, score: providerRelevance(u, qLower) }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)

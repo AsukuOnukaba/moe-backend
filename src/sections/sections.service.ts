@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { artisanDisplayName, productArtisanInclude, productToDto } from '../common/product-mapper';
+import { catalogueProviderFilter } from '../common/canonical-storefronts';
 import { ArtisanScoringService } from '../scoring/artisan-scoring.service';
 import {
   isSectionKey,
@@ -270,6 +271,14 @@ export class SectionsService {
       ];
     }
 
+    const seen = new Set<string>();
+    items = items.filter((item) => {
+      const id = String(item.id ?? '');
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
     return {
       sectionKey: section.sectionKey,
       label: section.label,
@@ -312,10 +321,12 @@ export class SectionsService {
           },
         },
       ]);
+      const hiddenProviders = await catalogueProviderFilter(this.prisma);
       const products = await this.prisma.product.findMany({
         where: {
           status: 'approved',
           deletedAt: null,
+          ...(hiddenProviders ? { providerId: hiddenProviders } : {}),
           OR: or,
         },
         orderBy: { createdAt: 'desc' },
@@ -334,14 +345,22 @@ export class SectionsService {
         }));
     }
 
+    const combined: Array<Record<string, unknown>> = [
+      ...curated.map((item) => ({ ...item, selection: 'curated' as const })),
+      ...matched,
+    ];
+    const seen = new Set<string>();
+    const items = combined.filter((item) => {
+      const id = String(item.id ?? '');
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
     return {
       sectionKey: section.sectionKey,
       label: section.label,
       keywords: section.keywords,
-      items: [
-        ...curated.map((item) => ({ ...item, selection: 'curated' as const })),
-        ...matched,
-      ],
+      items,
     };
   }
 
@@ -351,9 +370,15 @@ export class SectionsService {
     exclude: Set<string>,
   ) {
     if (need <= 0) return [];
+    const hiddenProviders = await catalogueProviderFilter(this.prisma);
+    const hidden = new Set(hiddenProviders?.notIn ?? []);
     if (type === 'product') {
       const products = await this.prisma.product.findMany({
-        where: { status: 'approved', deletedAt: null },
+        where: {
+          status: 'approved',
+          deletedAt: null,
+          ...(hiddenProviders ? { providerId: hiddenProviders } : {}),
+        },
         orderBy: { createdAt: 'desc' },
         take: need + exclude.size + 10,
         include: {
@@ -383,7 +408,9 @@ export class SectionsService {
     const fromScores = scored
       .filter(
         (s) =>
-          s.artisan.status === 'approved' && !exclude.has(String(s.artisanId)),
+          s.artisan.status === 'approved' &&
+          !exclude.has(String(s.artisanId)) &&
+          !hidden.has(s.artisanId),
       )
       .slice(0, need)
       .map((s) => this.artisanPublic(s.artisan));
@@ -397,6 +424,7 @@ export class SectionsService {
           notIn: [
             ...[...exclude].map((id) => Number(id)).filter((n) => !Number.isNaN(n)),
             ...fromScores.map((a) => Number(a.id)),
+            ...hidden,
           ],
         },
       },
@@ -411,6 +439,7 @@ export class SectionsService {
     items: { itemType: string; itemId: string; position: number }[],
     type: 'product' | 'artisan',
   ) {
+    const hidden = new Set((await catalogueProviderFilter(this.prisma))?.notIn ?? []);
     const out: Array<Record<string, unknown>> = [];
     for (const item of items) {
       const id = Number(item.itemId);
@@ -423,7 +452,7 @@ export class SectionsService {
             ...productArtisanInclude,
           },
         });
-        if (p) {
+        if (p && (p.providerId == null || !hidden.has(p.providerId))) {
           out.push({
             ...this.productPublic(p),
             artisanName: artisanDisplayName(p.provider),
@@ -434,7 +463,7 @@ export class SectionsService {
           where: { userId: id, status: 'approved' },
           include: { user: { select: { name: true, avatarUrl: true } } },
         });
-        if (a) out.push(this.artisanPublic(a));
+        if (a && !hidden.has(a.userId)) out.push(this.artisanPublic(a));
       }
     }
     return out;

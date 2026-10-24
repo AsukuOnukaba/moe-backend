@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { publicProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { productToDto, toTagArray } from '../common/product-mapper';
+import { excludedStorefrontIds } from '../common/canonical-storefronts';
 import { toStringList } from '../common/string-list';
 
 function splitCsv(value: string | null | undefined): string[] {
@@ -166,6 +167,9 @@ export class ServiceProvidersService {
         return blob.includes(needle);
       });
     }
+
+    const hiddenStorefronts = new Set(excludedStorefrontIds(providers));
+    providers = providers.filter((provider) => !hiddenStorefronts.has(Number(provider.id)));
 
     const sort = typeof query?.sort === 'string' ? query.sort : 'name';
     providers.sort((a, b) => {

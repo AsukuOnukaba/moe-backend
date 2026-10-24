@@ -128,15 +128,39 @@ export class ProductsService {
       ];
     }
 
-    const [totalItems, items] = await Promise.all([
-      this.prisma.product.count({ where }),
-      this.prisma.product.findMany({
+    const sortKey = typeof query?.sort === 'string' ? query.sort : '';
+    const nameDirection = sortKey === 'name_desc' ? -1 : sortKey === 'price_asc' || sortKey === 'price_desc' || sortKey === 'newest' || sortKey === 'bestSeller' || sortKey === 'trending' ? 0 : 1;
+
+    let totalItems: number;
+    let items: Awaited<ReturnType<PrismaService['product']['findMany']>>;
+    if (nameDirection !== 0) {
+      const rows = await this.prisma.product.findMany({
         where,
-        orderBy: this.getSort(query),
-        skip,
-        take: pageSize,
-      }),
-    ]);
+        select: { id: true, name: true },
+      });
+      rows.sort(
+        (a, b) =>
+          nameDirection * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
+          a.id - b.id,
+      );
+      totalItems = rows.length;
+      const pageIds = rows.slice(skip, skip + pageSize).map((row) => row.id);
+      const pageRows = pageIds.length
+        ? await this.prisma.product.findMany({ where: { id: { in: pageIds } } })
+        : [];
+      const byId = new Map(pageRows.map((row) => [row.id, row]));
+      items = pageIds.map((id) => byId.get(id)).filter((row) => row !== undefined);
+    } else {
+      [totalItems, items] = await Promise.all([
+        this.prisma.product.count({ where }),
+        this.prisma.product.findMany({
+          where,
+          orderBy: this.getSort(query),
+          skip,
+          take: pageSize,
+        }),
+      ]);
+    }
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     const pagination: Pagination = { page, pageSize, totalPages, totalItems };

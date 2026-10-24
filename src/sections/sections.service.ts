@@ -5,12 +5,15 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { artisanDisplayName, productArtisanInclude, productToDto } from '../common/product-mapper';
+import { publicProductWhere } from '../common/active-product';
 import { catalogueProviderFilter } from '../common/canonical-storefronts';
 import { ArtisanScoringService } from '../scoring/artisan-scoring.service';
 import {
   isSectionKey,
   MIN_SECTION_ITEMS,
   SECTION_ITEM_TYPES,
+  SECTION_KEYS,
+  SECTION_LABELS,
   SectionKey,
 } from './sections.constants';
 import {
@@ -27,6 +30,7 @@ export class SectionsService {
   ) {}
 
   async listAdminSections() {
+    await this.ensureKnownSections();
     const sections = await this.prisma.curatedSection.findMany({
       orderBy: { sectionKey: 'asc' },
       include: {
@@ -218,6 +222,7 @@ export class SectionsService {
 
   /** Public section payload — no admin fields, no scores. */
   async getPublicSection(sectionKey: string) {
+    if (isSectionKey(sectionKey)) await this.ensureKnownSections();
     if (!isSectionKey(sectionKey)) {
       throw new NotFoundException({
         message: 'Section not found',
@@ -255,6 +260,14 @@ export class SectionsService {
       ...item,
       selection: 'curated',
     }));
+    if (sectionKey === 'best_sellers') {
+      const exclude = new Set(items.map((item) => String(item.id)));
+      const ranked = await this.bestSellerFill(exclude, 8);
+      items = [
+        ...items,
+        ...ranked.map((item) => ({ ...item, selection: 'algorithm' as const })),
+      ];
+    }
     const pad =
       (sectionKey === 'featured_picks' || expectedType === 'artisan') &&
       items.length < MIN_SECTION_ITEMS;
@@ -666,7 +679,87 @@ export class SectionsService {
     };
   }
 
+  /** Creates missing shelves and corrects the seeded Best Sellers label on Featured Picks. */
+  private async ensureKnownSections() {
+    for (const sectionKey of SECTION_KEYS) {
+      const existing = await this.prisma.curatedSection.findUnique({ where: { sectionKey } });
+      if (!existing) {
+        await this.prisma.curatedSection.create({
+          data: {
+            sectionKey,
+            label: SECTION_LABELS[sectionKey],
+            isActive: true,
+            keywords: [],
+            updatedBy: 'system',
+          },
+        });
+        continue;
+      }
+      if (sectionKey === 'featured_picks' && existing.label === 'Best Sellers') {
+        await this.prisma.curatedSection.update({
+          where: { id: existing.id },
+          data: { label: SECTION_LABELS.featured_picks },
+        });
+      }
+    }
+  }
+
+  /**
+   * Order-based Best Sellers for the shelf preview. Not the Featured Picks
+   * curated list, and not padded with the newest products.
+   */
+  private async bestSellerFill(exclude: Set<string>, take: number) {
+    const hiddenProviders = await catalogueProviderFilter(this.prisma);
+    const candidates = await this.prisma.product.findMany({
+      where: {
+        ...publicProductWhere,
+        ...(hiddenProviders ? { providerId: hiddenProviders } : {}),
+      },
+      select: { id: true, name: true, isBestSeller: true },
+    });
+    const ids = candidates.map((row) => row.id);
+    const grouped = ids.length
+      ? await this.prisma.order.groupBy({
+          by: ['productId'],
+          where: {
+            productId: { in: ids },
+            status: { notIn: ['cancelled', 'rejected'] },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const counts = new Map(grouped.map((row) => [row.productId, row._count._all]));
+    const ranked = candidates
+      .filter((row) => !exclude.has(String(row.id)))
+      .filter((row) => row.isBestSeller || (counts.get(row.id) ?? 0) > 0)
+      .sort(
+        (a, b) =>
+          (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0) ||
+          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
+          a.id - b.id,
+      )
+      .slice(0, take);
+    if (!ranked.length) return [];
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ranked.map((row) => row.id) } },
+      include: {
+        keywords: { include: { keyword: true } },
+        ...productArtisanInclude,
+      },
+    });
+    const byId = new Map(products.map((product) => [product.id, product]));
+    return ranked.flatMap((row) => {
+      const product = byId.get(row.id);
+      if (!product) return [];
+      return [{
+        ...this.productPublic(product),
+        artisanName: artisanDisplayName(product.provider),
+      }];
+    });
+  }
+
   private async requireSection(sectionKey: string) {
+    await this.ensureKnownSections();
     if (!isSectionKey(sectionKey)) {
       throw new BadRequestException({
         message: `Unsupported section key: ${sectionKey}`,

@@ -683,7 +683,13 @@ export class AdminService {
         skip,
         take: pageSize,
         orderBy,
-        include: { provider: true },
+        include: {
+          provider: {
+            include: {
+              artisanProfile: { select: { brandName: true, businessName: true } },
+            },
+          },
+        },
       }),
     ]);
 
@@ -695,6 +701,11 @@ export class AdminService {
         category: p.category,
         price: p.price,
         artisan: p.provider?.name ?? null,
+        artisanName:
+          p.provider?.artisanProfile?.brandName?.trim() ||
+          p.provider?.artisanProfile?.businessName?.trim() ||
+          p.provider?.name ||
+          null,
         providerId: p.providerId,
         createdAt: p.createdAt.toISOString(),
       })),

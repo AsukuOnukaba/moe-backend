@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
-import { productToDto, toTagArray } from '../common/product-mapper';
+import { artisanDisplayName, productToDto, toTagArray } from '../common/product-mapper';
 import { toStringList } from '../common/string-list';
 
 function splitCsv(value: string | null) {
@@ -151,7 +151,15 @@ export class SearchService {
                 },
               ],
             },
-            include: { keywords: { include: { keyword: true } } },
+            include: {
+              keywords: { include: { keyword: true } },
+              provider: {
+                select: {
+                  name: true,
+                  artisanProfile: { select: { brandName: true, businessName: true } },
+                },
+              },
+            },
             take: 40,
           })
         : Promise.resolve([]),
@@ -245,7 +253,11 @@ export class SearchService {
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 10)
-      .map(({ p }) => productToDto(p));
+      .map(({ p }) => ({
+        ...productToDto(p),
+        artisanName: artisanDisplayName(p.provider),
+        artisanId: p.providerId ?? null,
+      }));
 
     const rankedProviders = (providers as any[])
       .map((u) => ({ u, score: providerRelevance(u, qLower) }))

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
-import { productToDto } from '../common/product-mapper';
+import { artisanDisplayName, productArtisanInclude, productToDto } from '../common/product-mapper';
 import { EventsService } from '../events/events.service';
 import { getCustomisationTemplate } from './product-customisation.templates';
 
@@ -146,7 +146,10 @@ export class ProductsService {
       totalItems = rows.length;
       const pageIds = rows.slice(skip, skip + pageSize).map((row) => row.id);
       const pageRows = pageIds.length
-        ? await this.prisma.product.findMany({ where: { id: { in: pageIds } } })
+        ? await this.prisma.product.findMany({
+            where: { id: { in: pageIds } },
+            include: productArtisanInclude,
+          })
         : [];
       const byId = new Map(pageRows.map((row) => [row.id, row]));
       items = pageIds.map((id) => byId.get(id)).filter((row) => row !== undefined);
@@ -158,6 +161,7 @@ export class ProductsService {
           orderBy: this.getSort(query),
           skip,
           take: pageSize,
+          include: productArtisanInclude,
         }),
       ]);
     }
@@ -166,7 +170,12 @@ export class ProductsService {
     const pagination: Pagination = { page, pageSize, totalPages, totalItems };
 
     return {
-      data: items.map(productToDto),
+      data: items.map((item) => ({
+        ...productToDto(item),
+        artisanName: artisanDisplayName(
+          (item as { provider?: Parameters<typeof artisanDisplayName>[0] }).provider,
+        ),
+      })),
       pagination,
     };
   }

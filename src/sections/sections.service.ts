@@ -521,7 +521,19 @@ export class SectionsService {
       if (!Number.isNaN(id) && item.itemType === 'product') {
         const p = await this.prisma.product.findUnique({
           where: { id },
-          select: { id: true, name: true, imageUrl: true, images: true, status: true },
+          select: {
+            id: true,
+            name: true,
+            imageUrl: true,
+            images: true,
+            status: true,
+            provider: {
+              select: {
+                name: true,
+                artisanProfile: { select: { brandName: true, businessName: true } },
+              },
+            },
+          },
         });
         if (p) {
           preview = {
@@ -529,6 +541,11 @@ export class SectionsService {
             name: p.name,
             image: p.imageUrl || p.images[0] || null,
             status: p.status,
+            artisanName:
+              p.provider?.artisanProfile?.brandName?.trim() ||
+              p.provider?.artisanProfile?.businessName?.trim() ||
+              p.provider?.name ||
+              null,
           };
         }
       } else if (!Number.isNaN(id) && item.itemType === 'artisan') {

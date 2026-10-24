@@ -13,6 +13,11 @@ import {
   CreateOrderDto,
 } from './dto/create-order.dto';
 import { validateCustomisationPayload } from '../products/product-customisation.templates';
+import {
+  ARTISAN_ORDER_VIEWS,
+  isArtisanOrderView,
+  summarizeArtisanOrders,
+} from './artisan-order-views';
 
 type ShippingAddress = {
   firstName: string;
@@ -250,12 +255,14 @@ export class OrdersService {
   async list(user: AccessTokenPayload, query: Record<string, unknown>) {
     const page = Math.max(1, Number(query?.page ?? 1));
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
-    const status = typeof query?.status === 'string' ? query.status : undefined;
     const isCustomOrder =
       query?.isCustomOrder === 'true' ? true : query?.isCustomOrder === 'false' ? false : undefined;
 
-    const where: Record<string, unknown> = { customerId: user.sub };
-    if (status) where.status = status;
+    const where: Record<string, unknown> =
+      user.role === 'artisan' ? { providerId: user.sub } : { customerId: user.sub };
+    const statuses = this.resolveListStatuses(query);
+    if (statuses?.length === 1) where.status = statuses[0];
+    else if (statuses && statuses.length > 1) where.status = { in: statuses };
     if (isCustomOrder !== undefined) where.isCustomOrder = isCustomOrder;
 
     const totalItems = await this.prisma.order.count({ where });
@@ -268,10 +275,49 @@ export class OrdersService {
       orderBy: { createdAt: 'desc' },
     });
 
+    const summary =
+      user.role === 'artisan'
+        ? summarizeArtisanOrders(
+            (
+              await this.prisma.order.groupBy({
+                by: ['status'],
+                where: { providerId: user.sub },
+                _count: { _all: true },
+              })
+            ).map((row) => ({ status: row.status, count: row._count._all })),
+          )
+        : undefined;
+
     return {
       data: items.map((item) => this.toOrderResponse(item)),
       total: totalItems,
+      ...(summary ? { summary } : {}),
     };
+  }
+
+  private resolveListStatuses(query: Record<string, unknown>): string[] | undefined {
+    const view = typeof query.view === 'string' ? query.view.trim() : '';
+    if (view && view !== 'all') {
+      if (!isArtisanOrderView(view)) {
+        throw new BadRequestException({
+          message: 'Invalid order view. Allowed: new, pending, completed, all',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      return [...ARTISAN_ORDER_VIEWS[view]];
+    }
+
+    const raw = typeof query.status === 'string' ? query.status.trim() : '';
+    if (!raw) return undefined;
+    const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+    const invalid = parts.filter((part) => !VALID_ORDER_STATUSES.has(part));
+    if (invalid.length > 0) {
+      throw new BadRequestException({
+        message: `Invalid status. Allowed: ${[...VALID_ORDER_STATUSES].join(', ')}`,
+        code: 'VALIDATION_ERROR',
+      });
+    }
+    return parts;
   }
 
   async getById(user: AccessTokenPayload, orderId: string) {

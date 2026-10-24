@@ -1,3 +1,25 @@
+export function artisanDisplayName(provider?: {
+  name?: string | null;
+  artisanProfile?: { brandName?: string | null; businessName?: string | null } | null;
+} | null): string | null {
+  const brand = provider?.artisanProfile?.brandName?.trim();
+  const business = provider?.artisanProfile?.businessName?.trim();
+  const person = provider?.name?.trim();
+  return brand || business || person || null;
+}
+
+export const productArtisanInclude = {
+  provider: {
+    select: {
+      id: true,
+      name: true,
+      artisanProfile: {
+        select: { brandName: true, businessName: true },
+      },
+    },
+  },
+} as const;
+
 export function toTagArray(value: string | null | undefined): string[] {
   if (!value) return [];
   return value.split(',').map((s) => s.trim()).filter(Boolean);

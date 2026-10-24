@@ -17,6 +17,7 @@ import { normalizeProductCategory } from '../common/product-categories';
 import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service-categories';
 import { toStringList } from '../common/string-list';
 import { KeywordsService } from '../keywords/keywords.service';
+import { ARTISAN_ORDER_VIEWS } from '../orders/artisan-order-views';
 
 function asArrayFromComma(value: string | string[] | null | undefined): string[] {
   return toStringList(value);
@@ -90,6 +91,12 @@ export class ArtisansService {
       category: artisanProfile.category ?? null,
       styleTags: asArrayFromComma(artisanProfile.styleTags),
       serviceCategories: asArrayFromComma(artisanProfile.serviceCategories),
+      pendingOrderCount: await this.prisma.order.count({
+        where: {
+          providerId: userId,
+          status: { in: [...ARTISAN_ORDER_VIEWS.pending] },
+        },
+      }),
     };
   }
 

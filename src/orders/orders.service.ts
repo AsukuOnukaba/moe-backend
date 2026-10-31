@@ -12,6 +12,7 @@ import {
   CheckoutPaymentMethod,
   CreateOrderDto,
 } from './dto/create-order.dto';
+import { priceOrderLine } from './order-pricing';
 import { validateCustomisationPayload } from '../products/product-customisation.templates';
 import {
   ARTISAN_ORDER_VIEWS,
@@ -519,17 +520,6 @@ export class OrdersService {
       });
     }
 
-    const basePrice =
-      typeof first.basePrice === 'number'
-        ? first.basePrice
-        : typeof first.finalPrice === 'number'
-          ? first.finalPrice
-          : (product.price ?? 0);
-
-    const surchargePercent = artisanProfile?.rushOrderSurchargePercent ?? 25;
-    const rushSurcharge = rushOrder ? basePrice * (surchargePercent / 100) : 0;
-    const finalPrice = basePrice + rushSurcharge;
-
     const rawCustomisation =
       (first.customisation as Record<string, unknown> | undefined) ??
       (first.customization as Record<string, unknown> | undefined) ??
@@ -600,6 +590,14 @@ export class OrdersService {
       }
     }
 
+    const priced = await this.priceLine(
+      product,
+      first,
+      selectedVariations,
+      rushOrder,
+      artisanProfile?.rushOrderSurchargePercent ?? 25,
+    );
+
     const dbOrder = await this.prisma.order.create({
       data: {
         customerId,
@@ -611,14 +609,14 @@ export class OrdersService {
         customizationId: null,
         isCustomOrder: Boolean(baseCustomisation),
         status: 'pending',
-        basePrice,
-        rushSurcharge: rushOrder ? rushSurcharge : null,
+        basePrice: priced.basePrice,
+        rushSurcharge: rushOrder ? priced.rushSurcharge : null,
         rushOrder,
-        price: finalPrice,
+        price: priced.finalPrice,
         customisationData: customisationData
           ? (customisationData as object)
           : undefined,
-        currency: body.currency ?? product.currency ?? 'NGN',
+        currency: (product.currency || 'NGN').toUpperCase(),
         shippingAddress: shippingAddress as object,
         shippingFirstName: shippingAddress.firstName,
         shippingLastName: shippingAddress.lastName,
@@ -678,21 +676,112 @@ export class OrdersService {
     });
     if (!dbOrder || dbOrder.customerId !== user.sub) return null;
 
+    // Payment status is applied only after gateway verification.
+    const data: { status?: string } = {};
+    if (typeof body?.status === 'string') data.status = body.status;
+    if (!data.status) return this.toOrderResponse(dbOrder);
+
     const updated = await this.prisma.order.update({
       where: { id: Number(orderId) },
-      data: {
-        ...(typeof body?.status === 'string' ? { status: body.status } : {}),
-        ...(typeof body?.paymentReference === 'string'
-          ? { paymentReference: body.paymentReference }
-          : {}),
-        ...(typeof body?.paymentStatus === 'string' ? { paymentStatus: body.paymentStatus } : {}),
-        ...(typeof body?.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
-      },
+      data,
     });
 
     await this.emitOrderTransitionNotifications(dbOrder, updated);
 
     return this.toOrderResponse(updated);
+  }
+
+  async applyVerifiedPayment(input: {
+    orderId: number;
+    customerId: number;
+    gateway: 'paystack' | 'flutterwave';
+    reference: string;
+    outcome: 'paid' | 'failed';
+  }): Promise<{ paymentStatus: string; orderStatus: string; alreadyPaid: boolean }> {
+    const dbOrder = await this.prisma.order.findUnique({ where: { id: input.orderId } });
+    if (!dbOrder || dbOrder.customerId !== input.customerId) {
+      throw new NotFoundException({ message: 'Order not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+    if (dbOrder.paymentStatus === 'paid') {
+      return { paymentStatus: 'paid', orderStatus: dbOrder.status, alreadyPaid: true };
+    }
+    if (input.outcome === 'failed') {
+      await this.prisma.order.updateMany({
+        where: { id: dbOrder.id, paymentStatus: { not: 'paid' } },
+        data: { paymentStatus: 'failed' },
+      });
+      return { paymentStatus: 'failed', orderStatus: dbOrder.status, alreadyPaid: false };
+    }
+    if (dbOrder.status === 'cancelled' || dbOrder.status === 'rejected') {
+      throw new BadRequestException({
+        message: 'This order can no longer be paid',
+        code: 'ORDER_NOT_PAYABLE',
+      });
+    }
+
+    const nextStatus = dbOrder.status === 'pending' ? 'confirmed' : dbOrder.status;
+    const updated = await this.prisma.order.updateMany({
+      where: {
+        id: dbOrder.id,
+        customerId: input.customerId,
+        paymentStatus: { not: 'paid' },
+        status: { notIn: ['cancelled', 'rejected'] },
+      },
+      data: {
+        paymentStatus: 'paid',
+        paymentReference: input.reference,
+        paymentMethod: input.gateway,
+        status: nextStatus,
+      },
+    });
+    if (updated.count === 0) {
+      const fresh = await this.prisma.order.findUnique({ where: { id: dbOrder.id } });
+      if (fresh?.paymentStatus === 'paid') {
+        return { paymentStatus: 'paid', orderStatus: fresh.status, alreadyPaid: true };
+      }
+      throw new BadRequestException({
+        message: 'This order can no longer be paid',
+        code: 'ORDER_NOT_PAYABLE',
+      });
+    }
+
+    if (nextStatus !== dbOrder.status) {
+      await this.appendStatusHistory(dbOrder.id, nextStatus, null, 'Payment confirmed');
+    }
+    await this.emitOrderTransitionNotifications(dbOrder, {
+      ...dbOrder,
+      status: nextStatus,
+      paymentStatus: 'paid',
+    });
+    return { paymentStatus: 'paid', orderStatus: nextStatus, alreadyPaid: false };
+  }
+
+  private async priceLine(
+    product: { id: number; price: number | null },
+    item: CreateOrderDto['items'][number],
+    selection: Record<string, unknown>,
+    rushOrder: boolean,
+    surchargePercent: number,
+  ) {
+    const variationTypes = await this.prisma.productVariationType.findMany({
+      where: { productId: product.id, isEnabled: true },
+      include: { options: { select: { value: true, label: true, priceOverride: true } } },
+    });
+    const priced = priceOrderLine({
+      catalogPrice: product.price,
+      quantity: item.quantity,
+      rushOrder,
+      surchargePercent,
+      variationTypes,
+      selection,
+    });
+    if (!priced) {
+      throw new BadRequestException({
+        message: 'This product does not have a price set',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+    return priced;
   }
 
   private formatOrderNumber(id: number) {

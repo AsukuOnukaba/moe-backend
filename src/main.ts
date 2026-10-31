@@ -5,6 +5,7 @@ if (!globalThis.crypto) {
 
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -16,8 +17,15 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
-  app.useBodyParser('json', { limit: '12mb' });
-  app.useBodyParser('urlencoded', { limit: '12mb', extended: true });
+  app.use(
+    json({
+      limit: '12mb',
+      verify: (req, _res, buf) => {
+        (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      },
+    }),
+  );
+  app.use(urlencoded({ limit: '12mb', extended: true }));
 
   app.use(cookieParser());
 

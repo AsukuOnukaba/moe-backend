@@ -109,6 +109,31 @@ class EnvVars {
   @IsOptional()
   @IsString()
   FRONTEND_URL?: string;
+
+  /** test (default) or live. Live charges also require PAYMENT_LIVE_ENABLED=true. */
+  @IsOptional()
+  @IsIn(['test', 'live'])
+  PAYMENT_MODE?: 'test' | 'live';
+
+  /** Must be the string "true" before live secret keys can start a charge. */
+  @IsOptional()
+  @IsString()
+  PAYMENT_LIVE_ENABLED?: string;
+
+  /** Paystack secret key. Test keys start with sk_test_. Server-side only. */
+  @IsOptional()
+  @IsString()
+  PAYSTACK_SECRET_KEY?: string;
+
+  /** Flutterwave secret key. Test keys contain TEST. Server-side only. */
+  @IsOptional()
+  @IsString()
+  FLUTTERWAVE_SECRET_KEY?: string;
+
+  /** Flutterwave dashboard secret hash, sent back in the verif-hash header. */
+  @IsOptional()
+  @IsString()
+  FLUTTERWAVE_WEBHOOK_HASH?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

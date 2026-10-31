@@ -19,6 +19,8 @@ export enum CheckoutPaymentMethod {
   WALLET = 'wallet',
   BANK_TRANSFER = 'bank_transfer',
   COD = 'cod',
+  PAYSTACK = 'paystack',
+  FLUTTERWAVE = 'flutterwave',
 }
 
 export class CheckoutShippingAddressDto {

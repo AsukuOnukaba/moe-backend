@@ -33,6 +33,7 @@ model User {
   addresses      Address[]
   wishlistItems  WishlistItem[]
   paymentMethods PaymentMethod[]
+  paymentAttempts PaymentAttempt[]
   preference     UserPreference?
 
   artisanProfile        ArtisanProfile?
@@ -301,10 +302,50 @@ model Order {
 
   statusHistory OrderStatusHistory[]
   disputes      Dispute[]
+  paymentAttempts PaymentAttempt[]
 
   @@index([customerId])
   @@index([productId])
   @@index([providerId])
+}
+
+/// One row per gateway checkout. Amounts are copied from the order at
+/// initialization and checked again before the order is marked paid.
+model PaymentAttempt {
+  id             String    @id @default(uuid())
+  orderId        Int
+  customerId     Int
+  gateway        String
+  reference      String    @unique
+  amountMinor    Int
+  currency       String
+  status         String    @default("pending")
+  paymentUrl     String?
+  accessCode     String?
+  saveCard       Boolean   @default(false)
+  cardOnly       Boolean   @default(false)
+  providerStatus String?
+  failureReason  String?
+  paidAt         DateTime?
+  verifiedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer User  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, gateway, status])
+  @@index([customerId])
+}
+
+model PaymentWebhookEvent {
+  id        String   @id @default(uuid())
+  gateway   String
+  eventKey  String
+  reference String?
+  createdAt DateTime @default(now())
+
+  @@unique([gateway, eventKey])
 }
 
 model Dispute {

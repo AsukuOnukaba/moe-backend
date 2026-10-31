@@ -20,6 +20,7 @@ type CartItem = {
   customisation: Record<string, unknown> | null;
   notes: string | null;
   quantity: number;
+  rushOrder: boolean;
 };
 
 const cartStore = new Map<number, CartItem[]>();
@@ -126,6 +127,7 @@ export class CartService {
         null,
       notes: typeof body?.notes === 'string' ? body.notes : null,
       quantity,
+      rushOrder: body?.rushOrder === true,
     };
 
     const cart = this.getCartForUser(userId);

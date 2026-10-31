@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -35,6 +36,10 @@ function authError(message: string, code: ErrorCode): UnauthorizedException {
 /** Failed-login lockout: 5 consecutive failures → 5-minute lock (in-memory, per email). */
 const MAX_FAILED_LOGINS = 5;
 const LOGIN_LOCKOUT_MS = 5 * 60 * 1000;
+const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const VERIFICATION_RESEND_COOLDOWN_MS = 60_000;
+const GENERIC_VERIFICATION_MESSAGE =
+  'If an unverified account exists for that email, a verification link has been sent.';
 type LoginFailureState = { count: number; lockedUntil: number | null };
 const loginFailures = new Map<string, LoginFailureState>();
 
@@ -105,6 +110,8 @@ function parseExpiresInToMs(expiresIn: string): number {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -114,6 +121,80 @@ export class AuthService {
 
   private hashResetToken(token: string) {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private frontendOrigin(): string {
+    const raw = this.config.get<string>('FRONTEND_URL')?.trim() || 'http://localhost:8080';
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'http://localhost:8080';
+      return url.origin;
+    } catch {
+      return 'http://localhost:8080';
+    }
+  }
+
+  private verificationError(reason: 'invalid' | 'expired' | 'used'): BadRequestException {
+    const message =
+      reason === 'expired'
+        ? 'This verification link has expired.'
+        : reason === 'used'
+          ? 'This verification link has already been used.'
+          : 'This verification link is invalid.';
+    return new BadRequestException({
+      message,
+      code: 'VALIDATION_ERROR' satisfies ErrorCode,
+    });
+  }
+
+  /** Stores only the SHA-256 hash. The raw token exists in the email link and is never logged. */
+  private async issueEmailVerification(user: { id: number; email: string; name: string }) {
+    const rawToken = randomBytes(32).toString('hex');
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationTokenHash: this.hashResetToken(rawToken),
+        emailVerificationExpires: new Date(now.getTime() + VERIFICATION_TTL_MS),
+        emailVerificationConsumedAt: null,
+        emailVerificationSentAt: now,
+      },
+    });
+    const verifyUrl = `${this.frontendOrigin()}/auth/verify-email?token=${rawToken}`;
+    try {
+      await this.email.sendEmailVerification({
+        to: user.email,
+        name: user.name,
+        verifyUrl,
+      });
+    } catch {
+      this.logger.warn('Verification email could not be sent');
+    }
+  }
+
+  private async issueEmailVerificationIfDue(user: {
+    id: number;
+    email: string;
+    name: string;
+    emailVerified?: boolean;
+    emailVerificationSentAt?: Date | null;
+  }) {
+    if (user.emailVerified) return;
+    const sentAt = user.emailVerificationSentAt?.getTime() ?? 0;
+    if (sentAt && Date.now() - sentAt < VERIFICATION_RESEND_COOLDOWN_MS) return;
+    await this.issueEmailVerification(user);
+  }
+
+  private async markEmailVerified(userId: number) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerified: true,
+        emailVerificationTokenHash: null,
+        emailVerificationExpires: null,
+        emailVerificationConsumedAt: null,
+      },
+    });
   }
 
   private accessExpiresIn(): string {
@@ -238,6 +319,7 @@ export class AuthService {
         email: input.email.toLowerCase(),
         passwordHash,
         phone: input.phone ?? null,
+        emailVerified: false,
       },
     });
 
@@ -258,10 +340,11 @@ export class AuthService {
       });
     }
 
-    const tokens = await this.issueTokens(user, role);
+    await this.issueEmailVerification(user);
     return {
-      ...tokens,
-      user: await this.toProfile(user, role),
+      verificationRequired: true as const,
+      email: user.email,
+      message: 'Check your email to verify your account before signing in.',
     };
   }
 
@@ -286,6 +369,14 @@ export class AuthService {
       throw new ForbiddenException({
         message: 'Your account has been suspended. Contact support.',
         code: 'FORBIDDEN',
+      });
+    }
+
+    if (user.emailVerified === false) {
+      clearFailedLogins(email);
+      throw new ForbiddenException({
+        message: 'Verify your email before signing in. Check your inbox for the verification link.',
+        code: 'EMAIL_NOT_VERIFIED' satisfies ErrorCode,
       });
     }
 
@@ -343,6 +434,7 @@ export class AuthService {
           passwordHash,
           googleId: profile.googleId,
           avatarUrl: profile.avatarUrl,
+          emailVerified: true,
         },
       });
       await this.ensureUserRole(user.id, 'customer');
@@ -358,8 +450,16 @@ export class AuthService {
         data: {
           googleId: profile.googleId,
           avatarUrl: user.avatarUrl ?? profile.avatarUrl,
+          emailVerified: true,
+          emailVerificationTokenHash: null,
+          emailVerificationExpires: null,
+          emailVerificationConsumedAt: null,
         },
       });
+    }
+
+    if (profile.emailVerified === true && user.emailVerified === false) {
+      user = await this.markEmailVerified(user.id);
     }
 
     if (user.status === 'suspended') {
@@ -414,9 +514,11 @@ export class AuthService {
       throw authError('Clerk user not found', 'AUTH_INVALID_CREDENTIALS');
     }
 
-    const primaryEmail =
-      clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)
-        ?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
+    const primary =
+      clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId) ??
+      clerkUser.emailAddresses[0];
+    const primaryEmail = primary?.emailAddress;
+    const providerVerified = primary?.verification?.status === 'verified';
     if (!primaryEmail) {
       throw new BadRequestException({
         message: 'Clerk account has no email address',
@@ -445,6 +547,14 @@ export class AuthService {
             clerkId: clerkUserId,
             avatarUrl: byEmail.avatarUrl ?? avatarUrl,
             ...(googleId && !byEmail.googleId ? { googleId } : {}),
+            ...(providerVerified
+              ? {
+                  emailVerified: true,
+                  emailVerificationTokenHash: null,
+                  emailVerificationExpires: null,
+                  emailVerificationConsumedAt: null,
+                }
+              : {}),
           },
         });
       } else {
@@ -468,6 +578,7 @@ export class AuthService {
             passwordHash,
             clerkId: clerkUserId,
             avatarUrl,
+            emailVerified: providerVerified,
             ...(googleId ? { googleId } : {}),
           },
         });
@@ -492,6 +603,18 @@ export class AuthService {
         message: 'Your account has been suspended. Contact support.',
         code: 'FORBIDDEN',
       });
+    }
+
+    if (user.emailVerified === false) {
+      if (providerVerified) {
+        user = await this.markEmailVerified(user.id);
+      } else {
+        await this.issueEmailVerificationIfDue(user);
+        throw new ForbiddenException({
+          message: 'Verify your email before signing in. Check your inbox for the verification link.',
+          code: 'EMAIL_NOT_VERIFIED' satisfies ErrorCode,
+        });
+      }
     }
 
     const role = await this.resolvePrimaryRole(user.id);
@@ -542,6 +665,12 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) throw authError('Refresh failed', 'AUTH_REFRESH_FAILED');
+    if (user.emailVerified === false) {
+      throw new ForbiddenException({
+        message: 'Verify your email before signing in. Check your inbox for the verification link.',
+        code: 'EMAIL_NOT_VERIFIED' satisfies ErrorCode,
+      });
+    }
 
     const role = await this.resolvePrimaryRole(user.id);
     const tokens = await this.issueTokens(user, role);
@@ -671,6 +800,7 @@ export class AuthService {
       phone: string | null;
       avatarUrl: string | null;
       createdAt: Date;
+      emailVerified?: boolean;
     },
     role: MoeRole,
     artisanProfile?: {
@@ -695,6 +825,7 @@ export class AuthService {
       username: user.email.split('@')[0],
       name: user.name,
       email: user.email,
+      emailVerified: user.emailVerified !== false,
       phone: user.phone,
       avatarUrl: user.avatarUrl,
       role,
@@ -857,5 +988,59 @@ export class AuthService {
     await this.logoutAll(user.id);
 
     return { message: 'Password updated successfully' };
+  }
+
+  async verifyEmail(token: string) {
+    const tokenHash = this.hashResetToken(token.trim());
+    const user = await this.prisma.user.findFirst({
+      where: { emailVerificationTokenHash: tokenHash },
+    });
+    if (!user) throw this.verificationError('invalid');
+    if (user.emailVerificationConsumedAt) throw this.verificationError('used');
+    if (!user.emailVerificationExpires || user.emailVerificationExpires.getTime() <= Date.now()) {
+      throw this.verificationError('expired');
+    }
+
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        id: user.id,
+        emailVerificationTokenHash: tokenHash,
+        emailVerificationConsumedAt: null,
+        emailVerificationExpires: { gt: new Date() },
+      },
+      data: {
+        emailVerified: true,
+        emailVerificationConsumedAt: new Date(),
+      },
+    });
+    if (updated.count === 0) {
+      const again = await this.prisma.user.findFirst({
+        where: { emailVerificationTokenHash: tokenHash },
+        select: { emailVerificationConsumedAt: true, emailVerificationExpires: true },
+      });
+      if (again?.emailVerificationConsumedAt) throw this.verificationError('used');
+      if (again?.emailVerificationExpires && again.emailVerificationExpires.getTime() <= Date.now()) {
+        throw this.verificationError('expired');
+      }
+      throw this.verificationError('invalid');
+    }
+
+    return {
+      verified: true,
+      message: 'Your email is verified. You can sign in.',
+    };
+  }
+
+  /**
+   * Same response whether the address is unknown, already verified, or cooling down.
+   * A second message is not sent until 60 seconds after the last one.
+   */
+  async resendVerification(email: string) {
+    const normalized = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalized } });
+    if (user && user.emailVerified === false) {
+      await this.issueEmailVerificationIfDue(user);
+    }
+    return { message: GENERIC_VERIFICATION_MESSAGE };
   }
 }

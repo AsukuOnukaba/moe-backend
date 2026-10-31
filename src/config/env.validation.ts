@@ -96,6 +96,12 @@ class EnvVars {
   @IsString()
   RESEND_API_KEY?: string;
 
+  /** Verified sender, e.g. MOE Africa <verify@moe-africa.com>. Server-side only. */
+  @IsOptional()
+  @IsString()
+  RESEND_FROM_EMAIL?: string;
+
+  /** Legacy alias for RESEND_FROM_EMAIL. */
   @IsOptional()
   @IsString()
   RESEND_FROM?: string;

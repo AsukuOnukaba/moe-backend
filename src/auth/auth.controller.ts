@@ -22,13 +22,16 @@ import { AuthRegisterDto } from './dto/auth-register.dto';
 import { AuthRefreshDto } from './dto/auth-refresh.dto';
 import { AuthClerkVerifyDto } from './dto/auth-clerk-verify.dto';
 import { OAuthConsentDto } from './dto/oauth-consent.dto';
-import { GoogleOauthGuard } from './guards/google-oauth.guard';
+import { GoogleOauthGuard, googleUnavailableRedirect } from './guards/google-oauth.guard';
+import { isGoogleOAuthConfigured } from './strategies/google.strategy';
 import { issueOAuthConsentTicket } from './oauth-consent';
 import { AuthProfilePatchDto } from './dto/auth-profile-patch.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { MoeThrottlerGuard } from '../common/guards/moe-throttler.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AccessTokenPayload } from './types/jwt-payload';
@@ -81,6 +84,21 @@ export class AuthController {
   }
 
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('verify-email')
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.auth.verifyEmail(dto.token);
+  }
+
+  /** IP ceiling. Per-account 60s cooldown is enforced in AuthService without revealing whether the email exists. */
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
+  @Post('resend-verification')
+  async resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.auth.resendVerification(dto.email);
+  }
+
+  @HttpCode(200)
   @Post('oauth-consent')
   oauthConsent(@Body() dto: OAuthConsentDto) {
     return issueOAuthConsentTicket(dto.acceptedTerms);
@@ -88,13 +106,18 @@ export class AuthController {
 
   @Get('google')
   @UseGuards(GoogleOauthGuard)
-  googleAuth() {
-    return;
+  googleAuth(@Res() res: Response) {
+    if (!isGoogleOAuthConfigured(this.config)) {
+      return res.redirect(googleUnavailableRedirect(this.config));
+    }
   }
 
   @Get('google/callback')
   @UseGuards(GoogleOauthGuard)
   async googleCallback(@Req() req: Request, @Res() res: Response) {
+    if (!isGoogleOAuthConfigured(this.config)) {
+      return res.redirect(googleUnavailableRedirect(this.config));
+    }
     const redirect =
       this.config.get<string>('GOOGLE_SUCCESS_REDIRECT') ??
       'http://localhost:8080/auth/callback';

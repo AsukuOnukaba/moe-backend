@@ -1,8 +1,22 @@
 import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
-import type { Request, Response } from 'express';
+import type { Request } from 'express';
 import { isGoogleOAuthConfigured } from '../strategies/google.strategy';
+
+/** Sign-in page to use when Google credentials are not configured. */
+export function googleUnavailableRedirect(config: ConfigService): string {
+  const success =
+    config.get<string>('GOOGLE_SUCCESS_REDIRECT')?.trim() ||
+    'http://localhost:8080/auth/callback';
+  let origin = 'http://localhost:8080';
+  try {
+    origin = new URL(success).origin;
+  } catch {
+    /* keep the local default */
+  }
+  return `${origin}/auth?error=google_unavailable`;
+}
 
 @Injectable()
 export class GoogleOauthGuard extends AuthGuard('google') {
@@ -10,20 +24,14 @@ export class GoogleOauthGuard extends AuthGuard('google') {
     super();
   }
 
+  /**
+   * Missing credentials must not start Passport. Returning false here makes Nest
+   * send a second 403 after the controller redirect.
+   * The controller sends the single unavailable redirect instead.
+   */
   canActivate(context: ExecutionContext) {
     if (!isGoogleOAuthConfigured(this.config)) {
-      const res = context.switchToHttp().getResponse<Response>();
-      const success =
-        this.config.get<string>('GOOGLE_SUCCESS_REDIRECT')?.trim() ||
-        'http://localhost:8080/auth/callback';
-      let origin = 'http://localhost:8080';
-      try {
-        origin = new URL(success).origin;
-      } catch {
-        /* keep the local default */
-      }
-      res.redirect(`${origin}/auth?error=google_unavailable`);
-      return false;
+      return true;
     }
     return super.canActivate(context);
   }

@@ -647,7 +647,13 @@ export class AdminService {
     page: number,
     pageSize: number,
     status?: string,
-    extras?: { q?: string; category?: string; sort?: string },
+    extras?: {
+      q?: string;
+      category?: string;
+      sort?: string;
+      createdFrom?: string;
+      createdTo?: string;
+    },
   ) {
     const skip = (page - 1) * pageSize;
     const q = extras?.q?.trim() ?? '';
@@ -656,6 +662,8 @@ export class AdminService {
       ? { status, ...activeProductWhere }
       : { ...activeProductWhere };
     if (category) where.category = category;
+    const createdAt = createdAtRange(extras?.createdFrom, extras?.createdTo);
+    if (createdAt) where.createdAt = createdAt;
     if (q.length >= 1) {
       where.OR = [
         { name: { contains: q, mode: 'insensitive' } },
@@ -672,10 +680,13 @@ export class AdminService {
         },
       ];
     }
+    const sort = extras?.sort;
     const orderBy =
-      extras?.sort === 'name' || extras?.sort === 'name_asc'
-        ? { name: 'asc' as const }
-        : { createdAt: 'desc' as const };
+      sort === 'oldest'
+        ? [{ createdAt: 'asc' as const }, { id: 'asc' as const }]
+        : sort === 'name' || sort === 'name_asc'
+          ? [{ name: 'asc' as const }, { id: 'asc' as const }]
+          : [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
     const [totalItems, items] = await Promise.all([
       this.prisma.product.count({ where }),
       this.prisma.product.findMany({
@@ -708,6 +719,7 @@ export class AdminService {
           null,
         providerId: p.providerId,
         createdAt: p.createdAt.toISOString(),
+        updatedAt: p.updatedAt.toISOString(),
       })),
       pagination: {
         page,
@@ -1179,4 +1191,44 @@ export class AdminService {
   patchOrder(id: number, body: Record<string, unknown>) {
     return this.orders.adminPatch(id, body);
   }
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseCreatedInstant(value: string | undefined): { date?: Date; dateOnly: boolean } {
+  const raw = value?.trim() ?? '';
+  if (!raw) return { dateOnly: false };
+  const dateOnly = DATE_ONLY.test(raw);
+  const date = dateOnly ? new Date(`${raw}T00:00:00.000Z`) : new Date(raw);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestException({
+      message: 'Invalid created date',
+      code: 'VALIDATION_ERROR',
+    });
+  }
+  return { date, dateOnly };
+}
+
+function endOfUtcDay(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999));
+}
+
+/** Inclusive createdAt window. A single YYYY-MM-DD is that UTC day. Reversed bounds are swapped. */
+function createdAtRange(createdFrom?: string, createdTo?: string) {
+  let from = parseCreatedInstant(createdFrom);
+  let to = parseCreatedInstant(createdTo);
+  if (from.date && !to.date && from.dateOnly) to = { ...from };
+  if (to.date && !from.date && to.dateOnly) from = { date: to.date, dateOnly: true };
+  if (from.date && to.date && from.date.getTime() > to.date.getTime()) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  const start = from.date;
+  const end = to.date && to.dateOnly ? endOfUtcDay(to.date) : to.date;
+  if (!start && !end) return undefined;
+  return {
+    ...(start ? { gte: start } : {}),
+    ...(end ? { lte: end } : {}),
+  };
 }

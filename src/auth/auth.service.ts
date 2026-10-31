@@ -307,16 +307,28 @@ export class AuthService {
       email: string;
       name: string;
       avatarUrl: string | null;
+      /** Google's email_verified claim. Unverified addresses are never used to link accounts. */
+      emailVerified?: boolean;
     },
     consentState?: string,
   ) {
     let user = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ googleId: profile.googleId }, { email: profile.email }],
-      },
+      where: { googleId: profile.googleId },
     });
 
+    if (!user && profile.emailVerified === true) {
+      user = await this.prisma.user.findFirst({
+        where: { email: profile.email },
+      });
+    }
+
     if (!user) {
+      if (profile.emailVerified !== true) {
+        throw new BadRequestException({
+          message: 'Google did not confirm this email address',
+          code: 'VALIDATION_ERROR',
+        });
+      }
       if (!consumeOAuthConsentTicket(consentState)) {
         throw new BadRequestException({
           message: CONSENT_REQUIRED,
@@ -335,6 +347,12 @@ export class AuthService {
       });
       await this.ensureUserRole(user.id, 'customer');
     } else if (!user.googleId) {
+      if (profile.emailVerified !== true) {
+        throw new BadRequestException({
+          message: 'Google did not confirm this email address',
+          code: 'VALIDATION_ERROR',
+        });
+      }
       user = await this.prisma.user.update({
         where: { id: user.id },
         data: {

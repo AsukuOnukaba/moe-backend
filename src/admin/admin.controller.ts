@@ -175,12 +175,14 @@ export class AdminController {
     @Query('q') q?: string,
     @Query('category') category?: string,
     @Query('sort') sort?: string,
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
   ) {
     return this.admin.listProducts(
       Math.max(1, Number(page ?? 1)),
       Math.max(1, Math.min(100, Number(pageSize ?? 20))),
       status,
-      { q, category, sort },
+      { q, category, sort, createdFrom, createdTo },
     );
   }
 

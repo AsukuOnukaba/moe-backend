@@ -20,6 +20,12 @@ export const productArtisanInclude = {
   },
 } as const;
 
+function toIsoTimestamp(value?: Date | string | null): string | undefined {
+  if (!value) return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 export function toTagArray(value: string | null | undefined): string[] {
   if (!value) return [];
   return value.split(',').map((s) => s.trim()).filter(Boolean);
@@ -59,9 +65,13 @@ export function productToDto(p: {
   stockCount?: number | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
   keywords?: { keyword: { term: string } }[] | { term: string }[];
   variationTypes?: any[];
 }) {
+  const createdAt = toIsoTimestamp(p.createdAt);
+  const updatedAt = toIsoTimestamp(p.updatedAt);
   const keywords = Array.isArray(p.keywords)
     ? p.keywords.map((k: any) =>
         k?.keyword?.term != null ? { term: k.keyword.term } : { term: k.term },
@@ -91,6 +101,8 @@ export function productToDto(p: {
     stockCount: p.stockCount ?? null,
     metaTitle: p.metaTitle ?? null,
     metaDescription: p.metaDescription ?? null,
+    ...(createdAt ? { createdAt } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
     keywords,
     ...(Array.isArray(p.variationTypes)
       ? {

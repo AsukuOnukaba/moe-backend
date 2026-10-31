@@ -201,6 +201,7 @@ model Product {
   @@index([category])
   @@index([status])
   @@index([deletedAt])
+  @@index([createdAt])
 }
 
 model AdminAuditLog {

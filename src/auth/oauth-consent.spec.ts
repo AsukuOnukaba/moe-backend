@@ -13,6 +13,7 @@ const profile = {
   email: 'new.google@local.test',
   name: 'New Google',
   avatarUrl: null,
+  emailVerified: true,
 };
 
 function serviceWith(prisma: Record<string, unknown>) {
@@ -88,6 +89,23 @@ describe('oauth signup consent', () => {
     const result = await service.handleGoogleLogin({ ...profile, googleId: 'already', email: 'phase2.artisan@local.test' });
     expect(result.user.email).toBe('phase2.artisan@local.test');
     expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('does not link or create an account from an unverified Google email', async () => {
+    const prisma = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+    const service = serviceWith(prisma);
+    await expect(
+      service.handleGoogleLogin({ ...profile, emailVerified: false }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('does not issue a ticket unless acceptedTerms is true', () => {

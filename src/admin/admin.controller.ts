@@ -26,6 +26,7 @@ import { CategoriesService } from '../categories/categories.service';
 import { CreateCategoryDto } from '../categories/dto/create-category.dto';
 import { UpdateCategoryDto } from '../categories/dto/update-category.dto';
 import { BulkDeleteCategoriesDto } from './dto/bulk-delete-categories.dto';
+import { BulkDeleteConversationsDto } from './dto/bulk-delete-conversations.dto';
 import { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import { CreateAdminProductDto } from './dto/create-admin-product.dto';
 import { CustomOrdersService } from '../custom-orders/custom-orders.service';
@@ -316,8 +317,8 @@ export class AdminController {
 
   @Post('conversations/bulk-delete')
   @HttpCode(200)
-  bulkDeleteConversations(@Body() body: { ids?: number[] }) {
-    return this.conversations.adminBulkDelete(body?.ids);
+  bulkDeleteConversations(@Body() body: BulkDeleteConversationsDto) {
+    return this.conversations.adminBulkDelete(body.ids);
   }
 
   @Get('conversations/:id')

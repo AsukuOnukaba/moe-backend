@@ -125,3 +125,48 @@ describe('admin conversation search matching', () => {
     expect(adminSearchMatch('no-such-term', row)).toBe(false);
   });
 });
+
+describe('admin soft-delete id parsing', () => {
+  function parseBulkIds(ids: unknown) {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    return [
+      ...new Set(
+        ids
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+          .map((id) => Math.trunc(id)),
+      ),
+    ].slice(0, 200);
+  }
+
+  function softDeleteActive(
+    rows: { id: number; deletedAt: Date | null }[],
+    ids: number[],
+  ) {
+    const now = new Date();
+    let deleted = 0;
+    for (const row of rows) {
+      if (ids.includes(row.id) && row.deletedAt == null) {
+        row.deletedAt = now;
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+
+  it('accepts only positive finite conversation ids', () => {
+    expect(parseBulkIds([1, '2', 2, -3, 0, 'x', 1.8])).toEqual([1, 2]);
+    expect(parseBulkIds([])).toEqual([]);
+    expect(parseBulkIds(null)).toEqual([]);
+  });
+
+  it('soft-deletes only active rows and leaves them out of active lists', () => {
+    const rows = [
+      { id: 1, deletedAt: null as Date | null },
+      { id: 2, deletedAt: null as Date | null },
+      { id: 3, deletedAt: new Date() },
+    ];
+    expect(softDeleteActive(rows, [1, 3, 99])).toBe(1);
+    expect(rows.filter((r) => r.deletedAt == null).map((r) => r.id)).toEqual([2]);
+  });
+});

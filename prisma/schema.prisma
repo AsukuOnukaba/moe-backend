@@ -458,6 +458,8 @@ model Conversation {
   lastMessageTime DateTime?
   artisanNote     String?
   status          String    @default("unread")
+  /// Soft-delete / archive timestamp. Null = active in participant + admin lists.
+  deletedAt       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -468,6 +470,7 @@ model Conversation {
   @@unique([customerId, providerId])
   @@index([customerId])
   @@index([providerId])
+  @@index([deletedAt])
 }
 
 model Message {

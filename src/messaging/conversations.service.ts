@@ -55,11 +55,16 @@ export class ConversationsService {
       lastMessageTime: Date | null;
       artisanNote?: string | null;
       status?: string;
-      customer: { name: string };
+      deletedAt?: Date | null;
+      customer: { name: string; email?: string };
       provider: { brandName: string | null; user: { name: string } };
     },
     unreadCount: number,
-    opts?: { includeArtisanNote?: boolean },
+    opts?: {
+      includeArtisanNote?: boolean;
+      viewerContext?: 'as_customer' | 'as_provider';
+      includeCustomerEmail?: boolean;
+    },
   ) {
     const providerName =
       row.provider.brandName ?? row.provider.user.name ?? '';
@@ -70,15 +75,43 @@ export class ConversationsService {
       providerId: row.providerId,
       artisanId: row.providerId,
       customerName: row.customer.name ?? '',
+      ...(opts?.includeCustomerEmail
+        ? { customerEmail: row.customer.email ?? '' }
+        : {}),
       providerName,
       artisanName: providerName,
       lastMessage: row.lastMessage ?? '',
       lastMessageTime: (row.lastMessageTime ?? new Date()).toISOString(),
       lastMessageAt: (row.lastMessageTime ?? new Date()).toISOString(),
       status: row.status ?? 'unread',
+      /** Role of the viewer in this conversation — not their global account role. */
+      viewerContext: opts?.viewerContext,
       ...(includeNote ? { artisanNote: row.artisanNote ?? null } : {}),
       unreadCount,
     };
+  }
+
+  /** Active conversations only (soft-deleted rows are archived). */
+  private activeConversationWhere(
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return { deletedAt: null, ...extra };
+  }
+
+  private viewerSideFor(
+    user: AccessTokenPayload,
+    conversation: { customerId: number; providerId: number },
+  ): 'as_customer' | 'as_provider' | null {
+    if (conversation.customerId === user.sub) return 'as_customer';
+    if (conversation.providerId === user.sub) return 'as_provider';
+    return null;
+  }
+
+  private parseListAs(
+    raw: unknown,
+  ): 'customer' | 'provider' | undefined {
+    if (raw === 'customer' || raw === 'provider') return raw;
+    return undefined;
   }
 
   private attachmentDownloadPath(conversationId: number, messageId: number) {
@@ -147,7 +180,7 @@ export class ConversationsService {
 
   private conversationInclude() {
     return {
-      customer: { select: { name: true } },
+      customer: { select: { name: true, email: true } },
       provider: {
         include: { user: { select: { name: true } } },
       },
@@ -184,22 +217,36 @@ export class ConversationsService {
     });
   }
 
-  async list(user: AccessTokenPayload) {
-    if (user.role === 'artisan') {
-      return this.listForArtisan(user);
-    }
-    if (user.role !== 'customer') {
+  /**
+   * List conversations by the caller's role *in each conversation*:
+   * - as=customer → threads the user initiated as buyer (Floating Messages)
+   * - as=provider → threads targeting the user as artisan (Customer Inquiries)
+   * When `as` is omitted, fall back to JWT role for backward compatibility.
+   */
+  async list(
+    user: AccessTokenPayload,
+    query?: { as?: string },
+  ) {
+    if (user.role !== 'customer' && user.role !== 'artisan') {
       throw new ForbiddenException({
         message: 'Forbidden',
         code: 'FORBIDDEN',
       });
+    }
+
+    const requested = this.parseListAs(query?.as);
+    const side: 'customer' | 'provider' =
+      requested ?? (user.role === 'artisan' ? 'provider' : 'customer');
+
+    if (side === 'provider') {
+      return this.listForProvider(user);
     }
     return this.listForCustomer(user);
   }
 
   private async listForCustomer(customer: AccessTokenPayload) {
     const rows = await this.prisma.conversation.findMany({
-      where: { customerId: customer.sub },
+      where: this.activeConversationWhere({ customerId: customer.sub }),
       include: this.conversationInclude(),
       orderBy: { lastMessageTime: 'desc' },
     });
@@ -208,14 +255,14 @@ export class ConversationsService {
       this.toConversationDto(
         row,
         this.computeUnreadCount(row.messages, 'customer'),
-        { includeArtisanNote: false },
+        { includeArtisanNote: false, viewerContext: 'as_customer' },
       ),
     );
   }
 
-  private async listForArtisan(artisan: AccessTokenPayload) {
+  private async listForProvider(provider: AccessTokenPayload) {
     const rows = await this.prisma.conversation.findMany({
-      where: { providerId: artisan.sub },
+      where: this.activeConversationWhere({ providerId: provider.sub }),
       include: this.conversationInclude(),
       orderBy: { lastMessageTime: 'desc' },
     });
@@ -224,7 +271,7 @@ export class ConversationsService {
       this.toConversationDto(
         row,
         this.computeUnreadCount(row.messages, 'artisan'),
-        { includeArtisanNote: true },
+        { includeArtisanNote: true, viewerContext: 'as_provider' },
       ),
     );
   }
@@ -253,6 +300,21 @@ export class ConversationsService {
       where: { customerId_providerId: { customerId, providerId } },
       include: this.conversationInclude(),
     });
+
+    if (conversation?.deletedAt) {
+      conversation = await this.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          deletedAt: null,
+          lastMessage: initialMessage || conversation.lastMessage,
+          lastMessageTime: initialMessage
+            ? new Date()
+            : conversation.lastMessageTime,
+          status: 'unread',
+        },
+        include: this.conversationInclude(),
+      });
+    }
 
     if (!conversation) {
       conversation = await this.prisma.conversation.create({
@@ -297,13 +359,13 @@ export class ConversationsService {
     user: AccessTokenPayload,
     conversationId: number,
   ) {
-    const where =
-      user.role === 'artisan'
-        ? { id: conversationId, providerId: user.sub }
-        : { id: conversationId, customerId: user.sub };
-
+    // Authorize by participation in this conversation, not global JWT role.
     const row = await this.prisma.conversation.findFirst({
-      where,
+      where: {
+        id: conversationId,
+        deletedAt: null,
+        OR: [{ customerId: user.sub }, { providerId: user.sub }],
+      },
       include: this.conversationInclude(),
     });
     if (!row) {
@@ -317,12 +379,16 @@ export class ConversationsService {
 
   async getOne(user: AccessTokenPayload, conversationId: number) {
     const row = await this.getConversationForUser(user, conversationId);
+    const side = this.viewerSideFor(user, row);
     const viewerRole =
-      user.role === 'artisan' ? 'artisan' : user.role === 'admin' ? 'admin' : 'customer';
+      side === 'as_provider' ? 'artisan' : side === 'as_customer' ? 'customer' : 'customer';
     return this.toConversationDto(
       row,
       this.computeUnreadCount(row.messages, viewerRole),
-      { includeArtisanNote: viewerRole !== 'customer' },
+      {
+        includeArtisanNote: side === 'as_provider',
+        viewerContext: side ?? undefined,
+      },
     );
   }
 
@@ -388,14 +454,22 @@ export class ConversationsService {
     body: { content?: string; durationMs?: string | number; clientKey?: string },
     file?: Express.Multer.File,
   ) {
-    if (user.role === 'artisan') {
+    const row = await this.getConversationForUser(user, conversationId);
+
+    // Support-response policy: the targeted provider cannot reply in-thread.
+    // Dual-hat artisans may still send when they are the customer in this conversation.
+    if (row.providerId === user.sub && row.customerId !== user.sub) {
       throw new ForbiddenException({
         message: 'Artisans cannot send messages directly. Use a private note instead.',
         code: 'FORBIDDEN',
       });
     }
-
-    const row = await this.getConversationForUser(user, conversationId);
+    if (row.customerId !== user.sub) {
+      throw new ForbiddenException({
+        message: 'Forbidden',
+        code: 'FORBIDDEN',
+      });
+    }
 
     const content = typeof body?.content === 'string' ? body.content.trim() : '';
     const clientKey = this.parseClientKey(body?.clientKey);
@@ -510,7 +584,9 @@ export class ConversationsService {
   ) {
     const isAdmin = user.role === 'admin';
     const conversation = isAdmin
-      ? await this.prisma.conversation.findUnique({ where: { id: conversationId } })
+      ? await this.prisma.conversation.findFirst({
+          where: { id: conversationId, deletedAt: null },
+        })
       : await this.getConversationForUser(user, conversationId);
 
     if (!conversation) {
@@ -556,10 +632,11 @@ export class ConversationsService {
 
   async markRead(user: AccessTokenPayload, conversationId: number) {
     const row = await this.getConversationForUser(user, conversationId);
+    const side = this.viewerSideFor(user, row);
+    const asProvider = side === 'as_provider';
 
-    const unreadSenderType =
-      user.role === 'artisan' ? 'customer' : 'provider';
-    const unreadSenderRole = user.role === 'customer' ? 'admin' : 'customer';
+    const unreadSenderType = asProvider ? 'customer' : 'provider';
+    const unreadSenderRole = asProvider ? 'customer' : 'admin';
 
     const now = new Date();
     await this.prisma.message.updateMany({
@@ -582,12 +659,17 @@ export class ConversationsService {
     return { success: true };
   }
 
-  private participantWhere(user: AccessTokenPayload) {
-    if (user.role === 'artisan') {
-      return { providerId: user.sub };
+  private participantWhere(
+    user: AccessTokenPayload,
+    as?: 'customer' | 'provider',
+  ) {
+    const side =
+      as ?? (user.role === 'artisan' ? 'provider' : 'customer');
+    if (side === 'provider') {
+      return this.activeConversationWhere({ providerId: user.sub });
     }
-    if (user.role === 'customer') {
-      return { customerId: user.sub };
+    if (user.role === 'customer' || user.role === 'artisan') {
+      return this.activeConversationWhere({ customerId: user.sub });
     }
     return null;
   }
@@ -607,12 +689,23 @@ export class ConversationsService {
     return flag === 'true' || nodeEnv !== 'production';
   }
 
+  private async softDeleteConversations(ids: number[]) {
+    if (ids.length === 0) return 0;
+    const now = new Date();
+    await this.notifications.deleteMessageNotificationsForConversations(ids);
+    const result = await this.prisma.conversation.updateMany({
+      where: { id: { in: ids }, deletedAt: null },
+      data: { deletedAt: now },
+    });
+    return result.count;
+  }
+
   async deleteOne(user: AccessTokenPayload, conversationId: number) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
     });
 
-    if (!conversation) {
+    if (!conversation || conversation.deletedAt) {
       throw new NotFoundException({
         message: 'Not found',
         code: 'RESOURCE_NOT_FOUND',
@@ -626,13 +719,13 @@ export class ConversationsService {
       });
     }
 
-    await this.notifications.deleteMessageNotificationsForConversations([
-      conversationId,
-    ]);
-    await this.prisma.conversation.delete({ where: { id: conversationId } });
+    await this.softDeleteConversations([conversationId]);
   }
 
-  async deleteAllForUser(user: AccessTokenPayload) {
+  async deleteAllForUser(
+    user: AccessTokenPayload,
+    query?: { as?: string },
+  ) {
     if (!this.bulkDeleteAllowed()) {
       throw new ForbiddenException({
         message: 'Bulk conversation delete is disabled',
@@ -640,7 +733,8 @@ export class ConversationsService {
       });
     }
 
-    const participantFilter = this.participantWhere(user);
+    const as = this.parseListAs(query?.as);
+    const participantFilter = this.participantWhere(user, as);
     if (!participantFilter) {
       throw new ForbiddenException({
         message: 'Forbidden',
@@ -658,18 +752,15 @@ export class ConversationsService {
     }
 
     const ids = conversations.map((c) => c.id);
-    await this.notifications.deleteMessageNotificationsForConversations(ids);
-    const result = await this.prisma.conversation.deleteMany({
-      where: { id: { in: ids } },
-    });
-
-    return { deleted: result.count };
+    const deleted = await this.softDeleteConversations(ids);
+    return { deleted };
   }
 
   async listForAdmin(query: {
     page?: number;
     pageSize?: number;
     status?: string;
+    q?: string;
   }) {
     const page = Math.max(1, Number(query?.page ?? 1));
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
@@ -678,8 +769,33 @@ export class ConversationsService {
       typeof query?.status === 'string' && query.status.trim()
         ? query.status.trim()
         : undefined;
+    const q =
+      typeof query?.q === 'string' && query.q.trim()
+        ? query.q.trim().slice(0, 200)
+        : undefined;
 
-    const where = statusFilter ? { status: statusFilter } : {};
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (statusFilter) where.status = statusFilter;
+
+    if (q) {
+      const idNum = Number(q);
+      const or: Record<string, unknown>[] = [
+        { lastMessage: { contains: q, mode: 'insensitive' } },
+        { customer: { name: { contains: q, mode: 'insensitive' } } },
+        { customer: { email: { contains: q, mode: 'insensitive' } } },
+        { provider: { brandName: { contains: q, mode: 'insensitive' } } },
+        { provider: { user: { name: { contains: q, mode: 'insensitive' } } } },
+        {
+          messages: {
+            some: { content: { contains: q, mode: 'insensitive' } },
+          },
+        },
+      ];
+      if (Number.isFinite(idNum) && idNum > 0) {
+        or.push({ id: Math.trunc(idNum) });
+      }
+      where.OR = or;
+    }
 
     const [totalItems, rows] = await Promise.all([
       this.prisma.conversation.count({ where }),
@@ -697,7 +813,7 @@ export class ConversationsService {
         this.toConversationDto(
           row,
           this.computeUnreadCount(row.messages, 'admin'),
-          { includeArtisanNote: true },
+          { includeArtisanNote: true, includeCustomerEmail: true },
         ),
       ),
       pagination: {
@@ -726,8 +842,8 @@ export class ConversationsService {
       });
     }
 
-    const row = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
+    const row = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, deletedAt: null },
       include: this.conversationInclude(),
     });
     if (!row) {
@@ -821,8 +937,8 @@ export class ConversationsService {
     conversationId: number,
     status: 'resolved' | 'needs_follow_up' | 'replied' | 'unread',
   ) {
-    const row = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
+    const row = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, deletedAt: null },
     });
     if (!row) {
       throw new NotFoundException({
@@ -860,7 +976,11 @@ export class ConversationsService {
     }
 
     const row = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, providerId: artisan.sub },
+      where: {
+        id: conversationId,
+        providerId: artisan.sub,
+        deletedAt: null,
+      },
     });
     if (!row) {
       throw new NotFoundException({
@@ -878,8 +998,8 @@ export class ConversationsService {
   }
 
   async getMessagesForAdmin(conversationId: number) {
-    const row = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
+    const row = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, deletedAt: null },
       include: this.conversationInclude(),
     });
     if (!row) {
@@ -893,15 +1013,15 @@ export class ConversationsService {
       conversation: this.toConversationDto(
         row,
         this.computeUnreadCount(row.messages, 'admin'),
-        { includeArtisanNote: true },
+        { includeArtisanNote: true, includeCustomerEmail: true },
       ),
       messages: row.messages.map((m) => this.toMessageDto(m)),
     };
   }
 
   async adminDelete(conversationId: number) {
-    const row = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
+    const row = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, deletedAt: null },
     });
     if (!row) {
       throw new NotFoundException({
@@ -910,10 +1030,34 @@ export class ConversationsService {
       });
     }
 
-    await this.notifications.deleteMessageNotificationsForConversations([
-      conversationId,
-    ]);
-    await this.prisma.conversation.delete({ where: { id: conversationId } });
+    await this.softDeleteConversations([conversationId]);
     return { success: true };
+  }
+
+  async adminBulkDelete(ids: unknown) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException({
+        message: 'ids must be a non-empty array',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+    const parsed = [
+      ...new Set(
+        ids
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+          .map((id) => Math.trunc(id)),
+      ),
+    ].slice(0, 200);
+
+    if (parsed.length === 0) {
+      throw new BadRequestException({
+        message: 'No valid conversation ids',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const deleted = await this.softDeleteConversations(parsed);
+    return { success: true, deleted };
   }
 }

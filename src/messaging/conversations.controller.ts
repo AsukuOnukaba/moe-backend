@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UploadedFile,
@@ -26,16 +27,16 @@ export class ConversationsController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  list(@Req() req: Request) {
+  list(@Req() req: Request, @Query('as') as?: string) {
     const user = req.user as AccessTokenPayload;
-    return this.conversations.list(user);
+    return this.conversations.list(user, { as });
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete()
-  deleteAll(@Req() req: Request) {
+  deleteAll(@Req() req: Request, @Query('as') as?: string) {
     const user = req.user as AccessTokenPayload;
-    return this.conversations.deleteAllForUser(user);
+    return this.conversations.deleteAllForUser(user, { as });
   }
 
   @UseGuards(JwtAuthGuard)

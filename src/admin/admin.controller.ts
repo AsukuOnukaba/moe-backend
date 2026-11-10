@@ -304,12 +304,20 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
+    @Query('q') q?: string,
   ) {
     return this.conversations.listForAdmin({
       page: Number(page ?? 1),
       pageSize: Number(pageSize ?? 20),
       status,
+      q,
     });
+  }
+
+  @Post('conversations/bulk-delete')
+  @HttpCode(200)
+  bulkDeleteConversations(@Body() body: { ids?: number[] }) {
+    return this.conversations.adminBulkDelete(body?.ids);
   }
 
   @Get('conversations/:id')

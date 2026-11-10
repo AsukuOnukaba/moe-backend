@@ -471,18 +471,31 @@ model Conversation {
 }
 
 model Message {
-  id             Int       @id @default(autoincrement())
-  conversationId Int
-  senderId       Int
-  senderType     String
-  senderRole     String    @default("customer")
-  content        String
-  sentAt         DateTime  @default(now())
-  readAt         DateTime?
+  id                     Int       @id @default(autoincrement())
+  conversationId         Int
+  senderId               Int
+  senderType             String
+  senderRole             String    @default("customer")
+  content                String
+  sentAt                 DateTime  @default(now())
+  readAt                 DateTime?
+  /// Cloudinary public_id for authenticated message attachments (never a public URL).
+  attachmentPublicId     String?
+  attachmentResourceType String?
+  attachmentName         String?
+  attachmentMimeType     String?
+  attachmentBytes        Int?
+  /// image | document | voice
+  attachmentKind         String?
+  /// Voice note duration in milliseconds (null for non-voice).
+  durationMs             Int?
+  /// Client idempotency key — prevents duplicate voice/attachment submits.
+  clientKey              String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
+  @@unique([conversationId, clientKey])
   @@index([conversationId])
   @@index([senderId])
 }

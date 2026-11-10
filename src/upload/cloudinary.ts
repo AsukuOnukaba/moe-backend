@@ -28,4 +28,30 @@ export function ensureCloudinaryConfigured() {
   return cloudinary;
 }
 
+/** Short-lived signed URL for authenticated message attachments. */
+export function signedAuthenticatedUrl(
+  publicId: string,
+  resourceType: string,
+  expiresInSeconds = 120,
+): string {
+  const client = ensureCloudinaryConfigured();
+  const expires_at = Math.floor(Date.now() / 1000) + expiresInSeconds;
+  return client.url(publicId, {
+    type: 'authenticated',
+    resource_type: resourceType || 'image',
+    sign_url: true,
+    secure: true,
+    expires_at,
+  });
+}
+
+export function isCloudinaryConfigured(): boolean {
+  loadDotenv();
+  return Boolean(
+    process.env.CLOUDINARY_CLOUD_NAME?.trim() &&
+      process.env.CLOUDINARY_API_KEY?.trim() &&
+      process.env.CLOUDINARY_API_SECRET?.trim(),
+  );
+}
+
 export { cloudinary };

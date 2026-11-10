@@ -29,7 +29,11 @@ import { BulkDeleteCategoriesDto } from './dto/bulk-delete-categories.dto';
 import { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import { CreateAdminProductDto } from './dto/create-admin-product.dto';
 import { CustomOrdersService } from '../custom-orders/custom-orders.service';
-import { cloudinaryUrl, createMulterOptions } from '../upload/multer.config';
+import {
+  cloudinaryUrl,
+  createMessageAttachmentMulterOptions,
+  createMulterOptions,
+} from '../upload/multer.config';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminRoleGuard)
@@ -314,13 +318,15 @@ export class AdminController {
   }
 
   @Post('conversations/:id/reply')
+  @UseInterceptors(FileInterceptor('file', createMessageAttachmentMulterOptions()))
   adminReply(
     @Req() req: Request,
     @Param('id') id: string,
-    @Body() body: { content: string },
+    @Body() body: { content?: string; durationMs?: string; clientKey?: string },
+    @UploadedFile() file?: Express.Multer.File,
   ) {
     const user = req.user as AccessTokenPayload;
-    return this.conversations.adminReply(user, Number(id), body);
+    return this.conversations.adminReply(user, Number(id), body, file);
   }
 
   @Patch('conversations/:id/status')

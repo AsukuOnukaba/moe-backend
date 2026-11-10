@@ -1,8 +1,26 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { NotificationsService } from '../notifications/notifications.service';
+import {
+  isCloudinaryConfigured,
+  signedAuthenticatedUrl,
+} from '../upload/cloudinary';
+import {
+  MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_VOICE_MAX_BYTES,
+  MESSAGE_VOICE_MIN_BYTES,
+  cloudinaryPublicId,
+  cloudinaryResourceType,
+  messageAttachmentKind,
+} from '../upload/multer.config';
 
 @Injectable()
 export class ConversationsService {
@@ -41,9 +59,11 @@ export class ConversationsService {
       provider: { brandName: string | null; user: { name: string } };
     },
     unreadCount: number,
+    opts?: { includeArtisanNote?: boolean },
   ) {
     const providerName =
       row.provider.brandName ?? row.provider.user.name ?? '';
+    const includeNote = opts?.includeArtisanNote === true;
     return {
       id: row.id,
       customerId: row.customerId,
@@ -56,9 +76,27 @@ export class ConversationsService {
       lastMessageTime: (row.lastMessageTime ?? new Date()).toISOString(),
       lastMessageAt: (row.lastMessageTime ?? new Date()).toISOString(),
       status: row.status ?? 'unread',
-      artisanNote: row.artisanNote ?? null,
+      ...(includeNote ? { artisanNote: row.artisanNote ?? null } : {}),
       unreadCount,
     };
+  }
+
+  private attachmentDownloadPath(conversationId: number, messageId: number) {
+    return `/conversations/${conversationId}/messages/${messageId}/attachment`;
+  }
+
+  private normalizeAttachmentKind(
+    kind?: string | null,
+  ): 'image' | 'document' | 'voice' {
+    if (kind === 'image' || kind === 'voice') return kind;
+    return 'document';
+  }
+
+  private formatVoiceDuration(durationMs?: number | null): string {
+    const totalSec = Math.max(0, Math.round((durationMs ?? 0) / 1000));
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
   private toMessageDto(message: {
@@ -70,7 +108,16 @@ export class ConversationsService {
     content: string;
     sentAt: Date;
     readAt: Date | null;
+    attachmentPublicId?: string | null;
+    attachmentResourceType?: string | null;
+    attachmentName?: string | null;
+    attachmentMimeType?: string | null;
+    attachmentBytes?: number | null;
+    attachmentKind?: string | null;
+    durationMs?: number | null;
   }) {
+    const hasAttachment = Boolean(message.attachmentPublicId);
+    const kind = this.normalizeAttachmentKind(message.attachmentKind);
     return {
       id: message.id,
       conversationId: message.conversationId,
@@ -80,6 +127,21 @@ export class ConversationsService {
       content: message.content,
       sentAt: message.sentAt.toISOString(),
       readAt: message.readAt?.toISOString() ?? null,
+      durationMs: message.durationMs ?? null,
+      attachment: hasAttachment
+        ? {
+            name: message.attachmentName ?? 'attachment',
+            mimeType: message.attachmentMimeType ?? 'application/octet-stream',
+            bytes: message.attachmentBytes ?? null,
+            kind,
+            durationMs: message.durationMs ?? null,
+            // Auth-gated path — never expose a raw Cloudinary URL.
+            url: this.attachmentDownloadPath(
+              message.conversationId,
+              message.id,
+            ),
+          }
+        : null,
     };
   }
 
@@ -146,6 +208,7 @@ export class ConversationsService {
       this.toConversationDto(
         row,
         this.computeUnreadCount(row.messages, 'customer'),
+        { includeArtisanNote: false },
       ),
     );
   }
@@ -161,6 +224,7 @@ export class ConversationsService {
       this.toConversationDto(
         row,
         this.computeUnreadCount(row.messages, 'artisan'),
+        { includeArtisanNote: true },
       ),
     );
   }
@@ -258,6 +322,7 @@ export class ConversationsService {
     return this.toConversationDto(
       row,
       this.computeUnreadCount(row.messages, viewerRole),
+      { includeArtisanNote: viewerRole !== 'customer' },
     );
   }
 
@@ -266,10 +331,62 @@ export class ConversationsService {
     return row.messages.map((m) => this.toMessageDto(m));
   }
 
+  private parseDurationMs(raw: unknown): number | null {
+    if (raw == null || raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.min(Math.round(n), 60 * 60 * 1000);
+  }
+
+  private parseClientKey(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const key = raw.trim().slice(0, 128);
+    return key || null;
+  }
+
+  private assertValidAttachmentFile(file: Express.Multer.File) {
+    const kind = messageAttachmentKind(file.mimetype);
+    const size = file.size ?? 0;
+    if (kind === 'voice') {
+      if (size < MESSAGE_VOICE_MIN_BYTES) {
+        throw new BadRequestException({
+          message: 'Voice recording is empty or too short',
+          code: 'EMPTY_RECORDING',
+        });
+      }
+      if (size > MESSAGE_VOICE_MAX_BYTES) {
+        throw new BadRequestException({
+          message: 'Voice recording exceeds the 10MB upload limit',
+          code: 'FILE_TOO_LARGE',
+        });
+      }
+      return;
+    }
+    if (size > MESSAGE_ATTACHMENT_MAX_BYTES) {
+      throw new BadRequestException({
+        message: 'File exceeds the 5MB upload limit',
+        code: 'FILE_TOO_LARGE',
+      });
+    }
+  }
+
+  private attachmentPreview(
+    kind: 'image' | 'document' | 'voice',
+    name: string,
+    durationMs?: number | null,
+  ) {
+    if (kind === 'image') return '📷 Image';
+    if (kind === 'voice') {
+      return `🎤 Voice message (${this.formatVoiceDuration(durationMs)})`;
+    }
+    return `📎 ${name}`;
+  }
+
   async sendMessage(
     user: AccessTokenPayload,
     conversationId: number,
-    body: { content?: string },
+    body: { content?: string; durationMs?: string | number; clientKey?: string },
+    file?: Express.Multer.File,
   ) {
     if (user.role === 'artisan') {
       throw new ForbiddenException({
@@ -281,32 +398,160 @@ export class ConversationsService {
     const row = await this.getConversationForUser(user, conversationId);
 
     const content = typeof body?.content === 'string' ? body.content.trim() : '';
-    if (!content) {
-      return { message: 'Missing content', code: 'VALIDATION_ERROR' };
+    const clientKey = this.parseClientKey(body?.clientKey);
+    const durationMs = this.parseDurationMs(body?.durationMs);
+
+    if (clientKey) {
+      const existing = await this.prisma.message.findFirst({
+        where: { conversationId, clientKey },
+      });
+      if (existing) {
+        return this.toMessageDto(existing);
+      }
+    }
+
+    if (!content && !file) {
+      throw new BadRequestException({
+        message: 'Message text or attachment is required',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    if (file && !isCloudinaryConfigured()) {
+      throw new ServiceUnavailableException({
+        message:
+          'Message attachments require Cloudinary. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+        code: 'STORAGE_NOT_CONFIGURED',
+      });
+    }
+
+    if (file) {
+      this.assertValidAttachmentFile(file);
     }
 
     const senderType =
       row.customerId === user.sub ? 'customer' : 'provider';
     const senderRole = row.customerId === user.sub ? 'customer' : 'admin';
 
-    const message = await this.prisma.message.create({
-      data: {
-        conversationId,
-        senderId: user.sub,
-        senderType,
-        senderRole,
-        content,
-      },
+    const kind = file ? messageAttachmentKind(file.mimetype) : null;
+    if (kind === 'voice' && durationMs != null && durationMs < 400) {
+      throw new BadRequestException({
+        message: 'Voice recording is empty or too short',
+        code: 'EMPTY_RECORDING',
+      });
+    }
+
+    const attachmentName = file
+      ? file.originalname || (kind === 'voice' ? 'voice-note' : 'attachment')
+      : 'attachment';
+    const attachmentData = file
+      ? {
+          attachmentPublicId: cloudinaryPublicId(file),
+          attachmentResourceType: cloudinaryResourceType(file, file.mimetype),
+          attachmentName,
+          attachmentMimeType: file.mimetype,
+          attachmentBytes: file.size ?? null,
+          attachmentKind: kind,
+          durationMs: kind === 'voice' ? durationMs : null,
+          ...(clientKey ? { clientKey } : {}),
+        }
+      : clientKey
+        ? { clientKey }
+        : {};
+
+    const preview =
+      content ||
+      (file && kind
+        ? this.attachmentPreview(kind, attachmentName, durationMs)
+        : '');
+
+    try {
+      const message = await this.prisma.message.create({
+        data: {
+          conversationId,
+          senderId: user.sub,
+          senderType,
+          senderRole,
+          content: content || preview,
+          ...attachmentData,
+        },
+      });
+
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { lastMessage: preview, lastMessageTime: new Date() },
+      });
+
+      await this.emitMessageNotification(row, message);
+
+      return this.toMessageDto(message);
+    } catch (err: unknown) {
+      // Unique clientKey race — return the first persisted message.
+      if (
+        clientKey &&
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code?: string }).code === 'P2002'
+      ) {
+        const existing = await this.prisma.message.findFirst({
+          where: { conversationId, clientKey },
+        });
+        if (existing) return this.toMessageDto(existing);
+      }
+      throw err;
+    }
+  }
+
+  async getAttachmentAccess(
+    user: AccessTokenPayload,
+    conversationId: number,
+    messageId: number,
+  ) {
+    const isAdmin = user.role === 'admin';
+    const conversation = isAdmin
+      ? await this.prisma.conversation.findUnique({ where: { id: conversationId } })
+      : await this.getConversationForUser(user, conversationId);
+
+    if (!conversation) {
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
+
+    const message = await this.prisma.message.findFirst({
+      where: { id: messageId, conversationId },
     });
+    if (!message?.attachmentPublicId) {
+      throw new NotFoundException({
+        message: 'Attachment not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+    }
 
-    await this.prisma.conversation.update({
-      where: { id: conversationId },
-      data: { lastMessage: content, lastMessageTime: new Date() },
-    });
+    if (!isCloudinaryConfigured()) {
+      throw new ServiceUnavailableException({
+        message:
+          'Message attachments require Cloudinary. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+        code: 'STORAGE_NOT_CONFIGURED',
+      });
+    }
 
-    await this.emitMessageNotification(row, message);
+    const url = signedAuthenticatedUrl(
+      message.attachmentPublicId,
+      message.attachmentResourceType || 'image',
+      120,
+    );
 
-    return this.toMessageDto(message);
+    return {
+      url,
+      name: message.attachmentName ?? 'attachment',
+      mimeType: message.attachmentMimeType ?? 'application/octet-stream',
+      kind: this.normalizeAttachmentKind(message.attachmentKind),
+      durationMs: message.durationMs ?? null,
+      expiresInSeconds: 120,
+    };
   }
 
   async markRead(user: AccessTokenPayload, conversationId: number) {
@@ -452,6 +697,7 @@ export class ConversationsService {
         this.toConversationDto(
           row,
           this.computeUnreadCount(row.messages, 'admin'),
+          { includeArtisanNote: true },
         ),
       ),
       pagination: {
@@ -466,11 +712,18 @@ export class ConversationsService {
   async adminReply(
     admin: AccessTokenPayload,
     conversationId: number,
-    body: { content?: string },
+    body: { content?: string; durationMs?: string | number; clientKey?: string },
+    file?: Express.Multer.File,
   ) {
     const content = typeof body?.content === 'string' ? body.content.trim() : '';
-    if (!content) {
-      return { message: 'Missing content', code: 'VALIDATION_ERROR' };
+    const clientKey = this.parseClientKey(body?.clientKey);
+    const durationMs = this.parseDurationMs(body?.durationMs);
+
+    if (!content && !file) {
+      throw new BadRequestException({
+        message: 'Message text or attachment is required',
+        code: 'VALIDATION_ERROR',
+      });
     }
 
     const row = await this.prisma.conversation.findUnique({
@@ -484,20 +737,70 @@ export class ConversationsService {
       });
     }
 
+    if (clientKey) {
+      const existing = await this.prisma.message.findFirst({
+        where: { conversationId, clientKey },
+      });
+      if (existing) return this.toMessageDto(existing);
+    }
+
+    if (file && !isCloudinaryConfigured()) {
+      throw new ServiceUnavailableException({
+        message:
+          'Message attachments require Cloudinary. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+        code: 'STORAGE_NOT_CONFIGURED',
+      });
+    }
+
+    if (file) this.assertValidAttachmentFile(file);
+
+    const kind = file ? messageAttachmentKind(file.mimetype) : null;
+    if (kind === 'voice' && durationMs != null && durationMs < 400) {
+      throw new BadRequestException({
+        message: 'Voice recording is empty or too short',
+        code: 'EMPTY_RECORDING',
+      });
+    }
+
+    const attachmentName = file
+      ? file.originalname || (kind === 'voice' ? 'voice-note' : 'attachment')
+      : 'attachment';
+    const attachmentData = file
+      ? {
+          attachmentPublicId: cloudinaryPublicId(file),
+          attachmentResourceType: cloudinaryResourceType(file, file.mimetype),
+          attachmentName,
+          attachmentMimeType: file.mimetype,
+          attachmentBytes: file.size ?? null,
+          attachmentKind: kind,
+          durationMs: kind === 'voice' ? durationMs : null,
+          ...(clientKey ? { clientKey } : {}),
+        }
+      : clientKey
+        ? { clientKey }
+        : {};
+
+    const preview =
+      content ||
+      (file && kind
+        ? this.attachmentPreview(kind, attachmentName, durationMs)
+        : '');
+
     const message = await this.prisma.message.create({
       data: {
         conversationId,
         senderId: admin.sub,
         senderType: 'provider',
         senderRole: 'admin',
-        content,
+        content: content || preview,
+        ...attachmentData,
       },
     });
 
     await this.prisma.conversation.update({
       where: { id: conversationId },
       data: {
-        lastMessage: content,
+        lastMessage: preview,
         lastMessageTime: new Date(),
         status: 'replied',
       },
@@ -506,7 +809,7 @@ export class ConversationsService {
     await this.notifications.notifyNewMessage({
       recipientId: row.customerId,
       senderName: 'MoE Support',
-      content,
+      content: preview,
       conversationId: row.id,
       messageId: message.id,
     });
@@ -541,6 +844,21 @@ export class ConversationsService {
     conversationId: number,
     note: string,
   ) {
+    if (artisan.role !== 'artisan') {
+      throw new ForbiddenException({
+        message: 'Only artisans can send private support notes',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const trimmed = note.trim();
+    if (!trimmed) {
+      throw new BadRequestException({
+        message: 'Note cannot be empty',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
     const row = await this.prisma.conversation.findFirst({
       where: { id: conversationId, providerId: artisan.sub },
     });
@@ -553,10 +871,10 @@ export class ConversationsService {
 
     await this.prisma.conversation.update({
       where: { id: conversationId },
-      data: { artisanNote: note.trim() || null },
+      data: { artisanNote: trimmed },
     });
 
-    return { success: true };
+    return { success: true, artisanNote: trimmed };
   }
 
   async getMessagesForAdmin(conversationId: number) {
@@ -575,6 +893,7 @@ export class ConversationsService {
       conversation: this.toConversationDto(
         row,
         this.computeUnreadCount(row.messages, 'admin'),
+        { includeArtisanNote: true },
       ),
       messages: row.messages.map((m) => this.toMessageDto(m)),
     };

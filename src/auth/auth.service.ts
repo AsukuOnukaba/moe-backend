@@ -28,6 +28,10 @@ import {
   consumeOAuthConsentTicket,
 } from './oauth-consent';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import {
+  assertDeliverableEmail,
+  normalizeEmail,
+} from '../common/email-validation';
 
 function authError(message: string, code: ErrorCode): UnauthorizedException {
   return new UnauthorizedException({ message, code });
@@ -40,6 +44,8 @@ const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const VERIFICATION_RESEND_COOLDOWN_MS = 60_000;
 const GENERIC_VERIFICATION_MESSAGE =
   'If an unverified account exists for that email, a verification link has been sent.';
+const VERIFICATION_SENT_MESSAGE =
+  "We've sent a verification link to your email. Please check your inbox or spam folder.";
 type LoginFailureState = { count: number; lockedUntil: number | null };
 const loginFailures = new Map<string, LoginFailureState>();
 
@@ -300,8 +306,9 @@ export class AuthService {
       });
     }
     const role: MoeRole = (input.role ?? 'customer') as MoeRole;
+    const { email } = await assertDeliverableEmail(input.email);
     const existing = await this.prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
+      where: { email },
     });
     if (existing) {
       throw new ConflictException({
@@ -316,7 +323,7 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         name: input.name,
-        email: input.email.toLowerCase(),
+        email,
         passwordHash,
         phone: input.phone ?? null,
         emailVerified: false,
@@ -344,12 +351,12 @@ export class AuthService {
     return {
       verificationRequired: true as const,
       email: user.email,
-      message: 'Check your email to verify your account before signing in.',
+      message: VERIFICATION_SENT_MESSAGE,
     };
   }
 
   async login(input: { email: string; password: string; rememberMe?: boolean }) {
-    const email = input.email.toLowerCase().trim();
+    const email = normalizeEmail(input.email);
     assertLoginNotLocked(email);
 
     const user = await this.prisma.user.findUnique({
@@ -904,7 +911,7 @@ export class AuthService {
    * Always returns the same message — never reveals whether the email exists.
    */
   async forgotPassword(email: string) {
-    const normalized = email.trim().toLowerCase();
+    const normalized = normalizeEmail(email);
     const user = await this.prisma.user.findUnique({ where: { email: normalized } });
 
     if (user) {
@@ -1036,11 +1043,73 @@ export class AuthService {
    * A second message is not sent until 60 seconds after the last one.
    */
   async resendVerification(email: string) {
-    const normalized = email.trim().toLowerCase();
+    const normalized = normalizeEmail(email);
     const user = await this.prisma.user.findUnique({ where: { email: normalized } });
     if (user && user.emailVerified === false) {
       await this.issueEmailVerificationIfDue(user);
     }
     return { message: GENERIC_VERIFICATION_MESSAGE };
+  }
+
+  /**
+   * Lets an unverified signup fix a mistyped address before clicking the link.
+   * Requires the original password; revokes the previous token and emails a new one.
+   */
+  async correctSignupEmail(input: {
+    email: string;
+    password: string;
+    newEmail: string;
+  }) {
+    const currentEmail = normalizeEmail(input.email);
+    const { email: nextEmail } = await assertDeliverableEmail(input.newEmail);
+
+    if (currentEmail === nextEmail) {
+      throw new BadRequestException({
+        message: 'Enter a different email address',
+        code: 'VALIDATION_ERROR',
+        errors: { newEmail: ['Enter a different email address'] },
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email: currentEmail } });
+    if (!user || user.emailVerified !== false) {
+      throw new BadRequestException({
+        message: 'Unable to update that email address',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const ok = await bcrypt.compare(input.password, user.passwordHash);
+    if (!ok) {
+      throw authError('Invalid email or password', 'AUTH_INVALID_CREDENTIALS');
+    }
+
+    const taken = await this.prisma.user.findUnique({ where: { email: nextEmail } });
+    if (taken && taken.id !== user.id) {
+      throw new ConflictException({
+        message: 'Email or Password already in use',
+        code: 'VALIDATION_ERROR',
+        errors: { newEmail: ['Email or Password already in use'] },
+      });
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email: nextEmail,
+        emailVerified: false,
+        emailVerificationTokenHash: null,
+        emailVerificationExpires: null,
+        emailVerificationConsumedAt: null,
+        emailVerificationSentAt: null,
+      },
+    });
+
+    await this.issueEmailVerification(updated);
+    return {
+      verificationRequired: true as const,
+      email: updated.email,
+      message: VERIFICATION_SENT_MESSAGE,
+    };
   }
 }

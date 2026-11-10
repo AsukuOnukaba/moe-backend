@@ -143,7 +143,8 @@ describe('email verification', () => {
     expect(result).toEqual({
       verificationRequired: true,
       email: 'ada@local.test',
-      message: 'Check your email to verify your account before signing in.',
+      message:
+        "We've sent a verification link to your email. Please check your inbox or spam folder.",
     });
     expect(jwt.signAsync).not.toHaveBeenCalled();
     const user = [...users.values()][0];
@@ -234,6 +235,49 @@ describe('email verification', () => {
     const session = await service.login({ email: input.email, password: input.password });
     expect(session.token).toBe('signed-token');
     expect(session.user.emailVerified).toBe(true);
+  });
+
+  it('rejects invalid email format before creating an account', async () => {
+    const { service, email, users } = harness();
+    await expect(
+      service.register({ ...input, email: 'not-an-email' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(users.size).toBe(0);
+    expect(email.sendEmailVerification).not.toHaveBeenCalled();
+  });
+
+  it('allows correcting a mistyped signup email with the account password', async () => {
+    const { service, email, users } = harness();
+    await service.register(input);
+    expect(email.sendEmailVerification).toHaveBeenCalledTimes(1);
+
+    const result = await service.correctSignupEmail({
+      email: input.email,
+      password: input.password,
+      newEmail: 'ada.fixed@local.test',
+    });
+    expect(result).toEqual({
+      verificationRequired: true,
+      email: 'ada.fixed@local.test',
+      message:
+        "We've sent a verification link to your email. Please check your inbox or spam folder.",
+    });
+    const user = [...users.values()][0];
+    expect(user.email).toBe('ada.fixed@local.test');
+    expect(user.emailVerified).toBe(false);
+    expect(email.sendEmailVerification).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects email correction with the wrong password', async () => {
+    const { service } = harness();
+    await service.register(input);
+    await expect(
+      service.correctSignupEmail({
+        email: input.email,
+        password: 'WrongPass1!',
+        newEmail: 'ada.fixed@local.test',
+      }),
+    ).rejects.toMatchObject({ status: 401 });
   });
 
   it('resends only after the 60 second cooldown and does not reveal unknown addresses', async () => {

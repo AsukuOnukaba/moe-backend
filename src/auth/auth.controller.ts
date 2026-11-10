@@ -32,6 +32,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { CorrectSignupEmailDto } from './dto/correct-signup-email.dto';
 import { MoeThrottlerGuard } from '../common/guards/moe-throttler.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AccessTokenPayload } from './types/jwt-payload';
@@ -96,6 +97,15 @@ export class AuthController {
   @Post('resend-verification')
   async resendVerification(@Body() dto: ResendVerificationDto) {
     return this.auth.resendVerification(dto.email);
+  }
+
+  /** Fix a mistyped signup address before verification. Requires the account password. */
+  @HttpCode(200)
+  @UseGuards(MoeThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
+  @Post('correct-signup-email')
+  async correctSignupEmail(@Body() dto: CorrectSignupEmailDto) {
+    return this.auth.correctSignupEmail(dto);
   }
 
   @HttpCode(200)

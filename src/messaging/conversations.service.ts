@@ -148,6 +148,7 @@ export class ConversationsService {
     attachmentBytes?: number | null;
     attachmentKind?: string | null;
     durationMs?: number | null;
+    clientKey?: string | null;
   }) {
     const hasAttachment = Boolean(message.attachmentPublicId);
     const kind = this.normalizeAttachmentKind(message.attachmentKind);
@@ -161,6 +162,7 @@ export class ConversationsService {
       sentAt: message.sentAt.toISOString(),
       readAt: message.readAt?.toISOString() ?? null,
       durationMs: message.durationMs ?? null,
+      clientKey: message.clientKey ?? null,
       attachment: hasAttachment
         ? {
             name: message.attachmentName ?? 'attachment',

@@ -501,6 +501,33 @@ export class ArtisanPayoutService {
       };
     }
 
+    if (payout.approvedAmount == null && payout.status !== 'not_required') {
+      return {
+        eligible: false,
+        reason: 'Approved payout amount is missing',
+        code: 'PAYOUT_AMOUNT_MISSING',
+        alreadyStarted: false,
+      };
+    }
+
+    const verifiedTotal = this.verifiedTransferTotal(
+      payout.transfers,
+      payout.currency,
+    );
+
+    if (
+      payout.approvedAmount != null &&
+      verifiedTotal > 0 &&
+      verifiedTotal + EPSILON < payout.approvedAmount
+    ) {
+      return {
+        eligible: false,
+        reason: `Verified funding (${verifiedTotal}) is below approved amount (${payout.approvedAmount})`,
+        code: 'PAYOUT_INSUFFICIENT',
+        alreadyStarted: false,
+      };
+    }
+
     if (payout.status !== 'verified') {
       return {
         eligible: false,
@@ -522,10 +549,6 @@ export class ArtisanPayoutService {
       };
     }
 
-    const verifiedTotal = this.verifiedTransferTotal(
-      payout.transfers,
-      payout.currency,
-    );
     if (verifiedTotal + EPSILON < payout.approvedAmount) {
       return {
         eligible: false,
@@ -697,6 +720,10 @@ export class ArtisanPayoutService {
     return updated;
   }
 
+  /**
+   * Audited path for standard in-stock orders that need no production funding.
+   * Custom / high-value / detailed material-cost orders cannot use this bypass.
+   */
   async markFundingNotRequired(
     admin: AccessTokenPayload,
     orderId: number,
@@ -715,7 +742,14 @@ export class ArtisanPayoutService {
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { artisanPayout: true },
+      include: {
+        artisanPayout: true,
+        readinessAssessments: {
+          where: { status: 'approved' },
+          orderBy: { version: 'desc' },
+          take: 1,
+        },
+      },
     });
     if (!order || order.readinessWorkflowStatus !== 'approved') {
       throw new BadRequestException({
@@ -727,6 +761,30 @@ export class ArtisanPayoutService {
       throw new ConflictException({
         message: 'Production already started',
         code: 'CONFLICT',
+      });
+    }
+
+    const assessment = order.readinessAssessments[0];
+    const payload =
+      assessment?.payload && typeof assessment.payload === 'object'
+        ? (assessment.payload as Record<string, unknown>)
+        : {};
+    const requested =
+      typeof payload.estimatedMaterialCost === 'number'
+        ? payload.estimatedMaterialCost
+        : order.artisanPayout?.requestedAmount;
+    const isDetailed = assessment?.type === 'detailed';
+    const mandatoryFunding =
+      order.isCustomOrder ||
+      isDetailed ||
+      (typeof requested === 'number' && requested > 0) ||
+      !!order.highValueOverride;
+
+    if (mandatoryFunding) {
+      throw new BadRequestException({
+        message:
+          'Funding-not-required is only allowed for standard in-stock orders without production material funding. Custom, detailed, or material-cost orders require verified initial payout.',
+        code: 'FUNDING_REQUIRED',
       });
     }
 

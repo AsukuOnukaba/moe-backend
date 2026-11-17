@@ -130,7 +130,7 @@ describe('ArtisanPayoutService', () => {
       productionDurationDays: null,
       currency: 'NGN',
       artisanPayout: {
-        status: 'verified',
+        status: 'recorded',
         fundingRequired: true,
         approvedAmount: 10000,
         currency: 'NGN',
@@ -140,7 +140,6 @@ describe('ArtisanPayoutService', () => {
         ],
       },
     });
-    // status verified with insufficient total still fails amount check
     expect(eligibility.eligible).toBe(false);
     expect(eligibility.code).toBe('PAYOUT_INSUFFICIENT');
   });

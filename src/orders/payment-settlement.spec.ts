@@ -25,7 +25,17 @@ describe('verified payment settlement', () => {
       orderStatusHistory: { create: jest.fn(async () => ({})) },
     };
     const notifications = { notifyOrderStatusChange: jest.fn(async () => undefined) };
-    const orders = new OrdersService(prisma as never, notifications as never, {} as never);
+    const readiness = {
+      readinessSummary: () => null,
+      assignReadinessOnCreate: jest.fn(),
+      assertProductionStartAllowed: jest.fn(),
+    };
+    const orders = new OrdersService(
+      prisma as never,
+      notifications as never,
+      {} as never,
+      readiness as never,
+    );
     return { orders, updates, prisma, notifications, order };
   }
 
@@ -95,7 +105,16 @@ describe('verified payment settlement', () => {
         update: jest.fn(),
       },
     };
-    const orders = new OrdersService(prisma as never, { notifyOrderStatusChange: jest.fn() } as never, {} as never);
+    const orders = new OrdersService(
+      prisma as never,
+      { notifyOrderStatusChange: jest.fn() } as never,
+      {} as never,
+      {
+        readinessSummary: () => null,
+        assignReadinessOnCreate: jest.fn(),
+        assertProductionStartAllowed: jest.fn(),
+      } as never,
+    );
     const result = await orders.patch(
       { sub: 3, email: 'ada@example.com', role: 'customer' },
       '9',

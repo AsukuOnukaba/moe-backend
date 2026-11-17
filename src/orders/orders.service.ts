@@ -16,9 +16,13 @@ import { priceOrderLine } from './order-pricing';
 import { validateCustomisationPayload } from '../products/product-customisation.templates';
 import {
   ARTISAN_ORDER_VIEWS,
+  artisanNewOrdersWhere,
   isArtisanOrderView,
   summarizeArtisanOrders,
+  summarizeArtisanOrdersWithReadiness,
 } from './artisan-order-views';
+import { NEW_ORDERS_READINESS_STATUSES } from './readiness.constants';
+import { OrderReadinessService } from './order-readiness.service';
 
 type ShippingAddress = {
   firstName: string;
@@ -57,6 +61,7 @@ type Order = {
   paymentStatus: string;
   estimatedDelivery: string | null;
   artisanName: string | null;
+  readiness?: ReturnType<OrderReadinessService['readinessSummary']>;
   createdAt: string;
   updatedAt: string;
 };
@@ -92,6 +97,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly paymentMethods: PaymentMethodsService,
+    private readonly readiness: OrderReadinessService,
   ) {}
 
   private normalizeShippingAddress(
@@ -187,7 +193,26 @@ export class OrdersService {
     shippingPostalCode: string | null;
     createdAt: Date;
     updatedAt: Date;
+    readinessAssignedAt?: Date | null;
+    readinessResponseDeadline?: Date | null;
+    readinessDeadlineExtendedAt?: Date | null;
+    readinessExtensionHours?: number | null;
+    readinessExtensionReason?: string | null;
+    readinessWorkflowStatus?: string | null;
+    highValueOverride?: boolean | null;
   }): Order {
+    const readinessFields = {
+      readinessAssignedAt: dbOrder.readinessAssignedAt ?? null,
+      readinessResponseDeadline: dbOrder.readinessResponseDeadline ?? null,
+      readinessDeadlineExtendedAt: dbOrder.readinessDeadlineExtendedAt ?? null,
+      readinessExtensionHours: dbOrder.readinessExtensionHours ?? null,
+      readinessExtensionReason: dbOrder.readinessExtensionReason ?? null,
+      readinessWorkflowStatus: dbOrder.readinessWorkflowStatus ?? null,
+      highValueOverride: dbOrder.highValueOverride ?? null,
+      isCustomOrder: dbOrder.isCustomOrder,
+      price: dbOrder.price,
+      currency: dbOrder.currency,
+    };
     return {
       id: dbOrder.id,
       customerId: dbOrder.customerId,
@@ -212,6 +237,7 @@ export class OrdersService {
       paymentStatus: dbOrder.paymentStatus,
       estimatedDelivery: dbOrder.estimatedDelivery,
       artisanName: dbOrder.providerName,
+      readiness: this.readiness.readinessSummary(readinessFields),
       createdAt: dbOrder.createdAt.toISOString(),
       updatedAt: dbOrder.updatedAt.toISOString(),
     };
@@ -259,11 +285,17 @@ export class OrdersService {
     const isCustomOrder =
       query?.isCustomOrder === 'true' ? true : query?.isCustomOrder === 'false' ? false : undefined;
 
-    const where: Record<string, unknown> =
+    const view = typeof query.view === 'string' ? query.view.trim() : '';
+    let where: Record<string, unknown> =
       user.role === 'artisan' ? { providerId: user.sub } : { customerId: user.sub };
-    const statuses = this.resolveListStatuses(query);
-    if (statuses?.length === 1) where.status = statuses[0];
-    else if (statuses && statuses.length > 1) where.status = { in: statuses };
+
+    if (user.role === 'artisan' && view === 'new') {
+      where = artisanNewOrdersWhere(user.sub);
+    } else {
+      const statuses = this.resolveListStatuses(query);
+      if (statuses?.length === 1) where.status = statuses[0];
+      else if (statuses && statuses.length > 1) where.status = { in: statuses };
+    }
     if (isCustomOrder !== undefined) where.isCustomOrder = isCustomOrder;
 
     const totalItems = await this.prisma.order.count({ where });
@@ -276,18 +308,37 @@ export class OrdersService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const summary =
-      user.role === 'artisan'
-        ? summarizeArtisanOrders(
-            (
-              await this.prisma.order.groupBy({
-                by: ['status'],
-                where: { providerId: user.sub },
-                _count: { _all: true },
-              })
-            ).map((row) => ({ status: row.status, count: row._count._all })),
-          )
-        : undefined;
+    let summary: ReturnType<typeof summarizeArtisanOrders> | undefined;
+    if (user.role === 'artisan') {
+      const statusRows = (
+        await this.prisma.order.groupBy({
+          by: ['status'],
+          where: { providerId: user.sub },
+          _count: { _all: true },
+        })
+      ).map((row) => ({ status: row.status, count: row._count._all }));
+      const [newReadinessCount, legacyPendingWithoutReadiness] = await Promise.all([
+        this.prisma.order.count({
+          where: {
+            providerId: user.sub,
+            readinessWorkflowStatus: { in: [...NEW_ORDERS_READINESS_STATUSES] },
+            status: { notIn: ['cancelled', 'rejected'] },
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            providerId: user.sub,
+            readinessWorkflowStatus: null,
+            status: 'pending',
+          },
+        }),
+      ]);
+      summary = summarizeArtisanOrdersWithReadiness(
+        statusRows,
+        newReadinessCount,
+        legacyPendingWithoutReadiness,
+      );
+    }
 
     return {
       data: items.map((item) => this.toOrderResponse(item)),
@@ -304,6 +355,10 @@ export class OrdersService {
           message: 'Invalid order view. Allowed: new, pending, completed, all',
           code: 'VALIDATION_ERROR',
         });
+      }
+      if (view === 'new') {
+        // Handled specially in list() via artisanNewOrdersWhere.
+        return [...ARTISAN_ORDER_VIEWS.new];
       }
       return [...ARTISAN_ORDER_VIEWS[view]];
     }
@@ -425,6 +480,11 @@ export class OrdersService {
     }
 
     this.assertStatusTransition(dbOrder.status, nextStatus);
+
+    // Phase 1: readiness workflow blocks production start (confirmed → in_progress).
+    if (nextStatus === 'in_progress') {
+      this.readiness.assertProductionStartAllowed(dbOrder);
+    }
 
     const updated = await this.prisma.order.update({
       where: { id },
@@ -641,6 +701,16 @@ export class OrdersService {
 
     await this.appendStatusHistory(dbOrder.id, 'pending', customerId, null);
 
+    // Phase 1: assign readiness workflow for newly created orders with a provider.
+    // Historical orders are not backfilled into this mandatory flow.
+    if (dbOrder.providerId) {
+      await this.readiness.assignReadinessOnCreate({
+        id: dbOrder.id,
+        providerId: dbOrder.providerId,
+        productName: dbOrder.productName,
+      });
+    }
+
     if (body.saveCard && gatewayToken && !paymentMethodId) {
       const saved = await this.paymentMethods.createFromGateway({
         userId: customerId,
@@ -660,10 +730,11 @@ export class OrdersService {
     await this.notifications.notifyOrderCreated(customerId, dbOrder.id);
 
     const paymentMethods = await this.paymentMethods.listForCheckout(customerId);
+    const fresh = await this.prisma.order.findUnique({ where: { id: dbOrder.id } });
 
     return {
       ...this.toOrderResponse({
-        ...dbOrder,
+        ...(fresh ?? dbOrder),
         paymentMethodId: resolvedPaymentMethodId,
       }),
       paymentMethods,

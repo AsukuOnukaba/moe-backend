@@ -297,16 +297,124 @@ model Order {
 
   estimatedDelivery String?
 
+  /// Phase 1 readiness workflow (null = legacy order, not in mandatory readiness flow).
+  readinessAssignedAt         DateTime?
+  readinessResponseDeadline   DateTime?
+  readinessDeadlineExtendedAt DateTime?
+  readinessExtensionHours     Int?
+  readinessExtensionReason    String?
+  readinessExtensionById      Int?
+  /// awaiting_response | overdue | submitted | under_review | changes_requested | approved | rejected | cannot_fulfil
+  readinessWorkflowStatus     String?
+  /// Admin/config override: force detailed assessment regardless of price.
+  highValueOverride           Boolean?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  statusHistory OrderStatusHistory[]
-  disputes      Dispute[]
-  paymentAttempts PaymentAttempt[]
+  statusHistory         OrderStatusHistory[]
+  disputes              Dispute[]
+  paymentAttempts       PaymentAttempt[]
+  readinessAssessments  OrderReadinessAssessment[]
+  readinessReminders    OrderReadinessReminder[]
+  readinessEvents       OrderReadinessEvent[]
 
   @@index([customerId])
   @@index([productId])
   @@index([providerId])
+  @@index([readinessWorkflowStatus])
+  @@index([readinessResponseDeadline])
+}
+
+/// Versioned artisan readiness assessment for an order.
+model OrderReadinessAssessment {
+  id                       Int       @id @default(autoincrement())
+  orderId                  Int
+  version                  Int
+  /// standard | detailed
+  type                     String
+  /// draft | submitted | changes_requested | approved | rejected | superseded | cannot_fulfil
+  status                   String    @default("draft")
+  artisanId                Int
+  payload                  Json
+  cannotFulfil             Boolean   @default(false)
+  cannotFulfilReason       String?
+  acknowledgedRequirements Boolean   @default(false)
+  reviewedRequirementsAt   DateTime?
+  submittedAt              DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  order    Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  evidence OrderReadinessEvidence[]
+  reviews  OrderReadinessReview[]
+
+  @@unique([orderId, version])
+  @@index([orderId, status])
+  @@index([artisanId])
+}
+
+model OrderReadinessEvidence {
+  id                     Int      @id @default(autoincrement())
+  assessmentId           Int
+  /// Cloudinary public_id (authenticated) — never a public URL.
+  attachmentPublicId     String
+  attachmentResourceType String
+  attachmentName         String
+  attachmentMimeType     String
+  attachmentBytes        Int?
+  /// image | document | voice
+  attachmentKind         String
+  durationMs             Int?
+  createdAt              DateTime @default(now())
+
+  assessment OrderReadinessAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+}
+
+model OrderReadinessReview {
+  id           Int      @id @default(autoincrement())
+  assessmentId Int
+  reviewerId   Int
+  /// approve | request_changes | reject
+  decision     String
+  reason       String?
+  createdAt    DateTime @default(now())
+
+  assessment OrderReadinessAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+  @@index([reviewerId])
+}
+
+/// Deduped deadline reminder / overdue escalation records.
+model OrderReadinessReminder {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  /// reminder_12h | reminder_20h | overdue
+  kind      String
+  sentAt    DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, kind])
+  @@index([orderId])
+}
+
+/// Append-only audit trail for readiness workflow actions.
+model OrderReadinessEvent {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  actorId   Int?
+  /// assigned | submitted | reminder | overdue | extended | approved | changes_requested | rejected | cannot_fulfil
+  action    String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
 }
 
 /// One row per gateway checkout. Amounts are copied from the order at

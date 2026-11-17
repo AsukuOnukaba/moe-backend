@@ -1,8 +1,13 @@
+import {
+  NEW_ORDERS_READINESS_STATUSES,
+  type ReadinessWorkflowStatus,
+} from './readiness.constants';
+
 /**
- * Artisan order screens. New is the newly placed subset of Pending.
- * Pending is every open order, including status `pending`, so a new order
- * cannot be missed by the dashboard card. Completed is delivered only.
- * Cancelled and rejected stay on All. No stored statuses are added here.
+ * Artisan order screens. New is the intake queue:
+ * - Phase 1 readiness-active orders (awaiting response through approved-awaiting-payout)
+ * - Legacy pending orders without a readiness workflow
+ * Pending is every open order. Completed is delivered only.
  */
 export const ARTISAN_ORDER_VIEWS = {
   new: ['pending'],
@@ -31,7 +36,39 @@ export function artisanOrderView(status: string): ArtisanOrderView | 'other' {
   return 'other';
 }
 
-export function summarizeArtisanOrders(rows: Array<{ status: string; count: number }>) {
+export function isNewOrdersReadinessStatus(
+  status: string | null | undefined,
+): boolean {
+  return (
+    !!status &&
+    NEW_ORDERS_READINESS_STATUSES.includes(status as ReadinessWorkflowStatus)
+  );
+}
+
+/** Prisma where-fragment for artisan New Orders (Phase 1 + legacy). */
+export function artisanNewOrdersWhere(providerId: number) {
+  return {
+    providerId,
+    OR: [
+      {
+        readinessWorkflowStatus: { in: [...NEW_ORDERS_READINESS_STATUSES] },
+        status: { notIn: ['cancelled', 'rejected'] },
+      },
+      {
+        readinessWorkflowStatus: null,
+        status: 'pending',
+      },
+    ],
+  };
+}
+
+export function summarizeArtisanOrders(
+  rows: Array<{
+    status: string;
+    count: number;
+    readinessWorkflowStatus?: string | null;
+  }>,
+) {
   const summary = { new: 0, pending: 0, completed: 0, all: 0 };
   for (const row of rows) {
     summary.all += row.count;
@@ -40,4 +77,20 @@ export function summarizeArtisanOrders(rows: Array<{ status: string; count: numb
     }
   }
   return summary;
+}
+
+/**
+ * Accurate New-Orders count when readiness workflow is present.
+ * `statusRows` = groupBy status; `newReadinessCount` = count of readiness-active new queue.
+ */
+export function summarizeArtisanOrdersWithReadiness(
+  statusRows: Array<{ status: string; count: number }>,
+  newReadinessCount: number,
+  legacyPendingWithoutReadiness: number,
+) {
+  const base = summarizeArtisanOrders(statusRows);
+  return {
+    ...base,
+    new: newReadinessCount + legacyPendingWithoutReadiness,
+  };
 }

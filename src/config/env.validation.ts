@@ -134,6 +134,15 @@ class EnvVars {
   @IsOptional()
   @IsString()
   FLUTTERWAVE_WEBHOOK_HASH?: string;
+
+  /**
+   * Phase 1 readiness: NGN price at/above which marketplace orders use the
+   * detailed assessment (custom orders always use detailed). Configurable —
+   * do not hard-code a business threshold in application logic.
+   */
+  @IsOptional()
+  @IsString()
+  ORDER_HIGH_VALUE_THRESHOLD_NGN?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

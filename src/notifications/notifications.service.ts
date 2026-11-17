@@ -283,4 +283,158 @@ export class NotificationsService {
     });
     return { success: true };
   }
+
+  // ─── Order readiness (Phase 1) ────────────────────────────
+
+  private readinessArtisanLink(orderId: number) {
+    return `/artisan/dashboard?tab=orders&orderView=new&readinessOrderId=${orderId}`;
+  }
+
+  private readinessAdminLink(orderId: number) {
+    return `/admin/orders?readiness=1&orderId=${orderId}`;
+  }
+
+  async notifyReadinessAssigned(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    deadline: Date,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'New order assigned',
+      body: `"${productName}" needs a readiness response by ${deadline.toLocaleString()}.`,
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:assigned`,
+    });
+  }
+
+  async notifyReadinessReminder(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    deadline: Date,
+    hourMark: 12 | 20,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Readiness response due soon',
+      body: `"${productName}" response deadline is ${deadline.toLocaleString()}.`,
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:reminder:${hourMark}h`,
+    });
+  }
+
+  async notifyReadinessOverdue(
+    adminId: number,
+    orderId: number,
+    productName: string,
+    artisanName: string,
+  ) {
+    return this.create({
+      userId: adminId,
+      type: 'order_update',
+      title: 'Artisan response overdue',
+      body: `${artisanName} has not submitted readiness for "${productName}" (#${orderId}).`,
+      link: this.readinessAdminLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:overdue:admin:${adminId}`,
+    });
+  }
+
+  async notifyReadinessOverdueArtisan(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Readiness response overdue',
+      body: `Your readiness response for "${productName}" is overdue. Please submit as soon as possible.`,
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:overdue:artisan`,
+    });
+  }
+
+  async notifyReadinessSubmitted(
+    adminId: number,
+    orderId: number,
+    productName: string,
+    assessmentId: number,
+  ) {
+    return this.create({
+      userId: adminId,
+      type: 'order_update',
+      title: 'Readiness submitted',
+      body: `An artisan submitted readiness for "${productName}" (#${orderId}).`,
+      link: this.readinessAdminLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:submitted:${assessmentId}:admin:${adminId}`,
+    });
+  }
+
+  async notifyReadinessApproved(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Readiness approved',
+      body: `Your readiness for "${productName}" was approved. Awaiting initial payout before production can start.`,
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:approved`,
+    });
+  }
+
+  async notifyReadinessChangesRequested(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    reason: string,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Readiness changes requested',
+      body: `Please revise readiness for "${productName}". ${reason}`.trim(),
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:changes_requested:${Date.now()}`,
+    });
+  }
+
+  async notifyReadinessRejected(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    reason: string,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Readiness rejected',
+      body: `Readiness for "${productName}" was rejected. ${reason}`.trim(),
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:rejected`,
+    });
+  }
+
+  async notifyReadinessDeadlineExtended(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    deadline: Date,
+    hours: number,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Response deadline extended',
+      body: `"${productName}" deadline extended by ${hours}h to ${deadline.toLocaleString()}.`,
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:readiness:extended:${deadline.toISOString()}`,
+    });
+  }
 }

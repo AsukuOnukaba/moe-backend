@@ -11,8 +11,9 @@ import {
  */
 export const ARTISAN_ORDER_VIEWS = {
   new: ['pending'],
-  pending: ['pending', 'confirmed', 'in_progress', 'ready', 'shipped', 'approved'],
-  completed: ['delivered'],
+  pending: ['pending', 'confirmed', 'in_progress', 'approved'],
+  /** Quality-approved and onward fulfillment (ready/shipped/delivered). */
+  completed: ['ready', 'shipped', 'delivered'],
 } as const;
 
 export type ArtisanOrderView = keyof typeof ARTISAN_ORDER_VIEWS;

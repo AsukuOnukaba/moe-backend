@@ -9,12 +9,22 @@ import { OrderReadinessScheduler } from './order-readiness.scheduler';
 import { ArtisanPayoutController } from './artisan-payout.controller';
 import { ArtisanPayoutService } from './artisan-payout.service';
 import { AdminCapabilitiesService } from '../auth/admin-capabilities.service';
+import { OrderProductionController } from './order-production.controller';
+import { OrderProductionService } from './order-production.service';
+import { OrderProductionScheduler } from './order-production.scheduler';
+import { OrderQualityController } from './order-quality.controller';
+import { OrderQualityService } from './order-quality.service';
+import { OrderMilestoneController } from './order-milestone.controller';
+import { OrderMilestoneService } from './order-milestone.service';
 
 @Module({
   imports: [NotificationsModule, forwardRef(() => PaymentsModule)],
   controllers: [
     OrderReadinessController,
     ArtisanPayoutController,
+    OrderProductionController,
+    OrderQualityController,
+    OrderMilestoneController,
     OrdersController,
   ],
   providers: [
@@ -23,8 +33,19 @@ import { AdminCapabilitiesService } from '../auth/admin-capabilities.service';
     OrderReadinessScheduler,
     ArtisanPayoutService,
     AdminCapabilitiesService,
+    OrderProductionService,
+    OrderProductionScheduler,
+    OrderQualityService,
+    OrderMilestoneService,
   ],
-  exports: [OrdersService, OrderReadinessService, ArtisanPayoutService],
+  exports: [
+    OrdersService,
+    OrderReadinessService,
+    ArtisanPayoutService,
+    OrderProductionService,
+    OrderQualityService,
+    OrderMilestoneService,
+  ],
 })
 export class OrdersModule {}
 

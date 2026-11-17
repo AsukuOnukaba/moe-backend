@@ -205,7 +205,10 @@ export class OrdersService {
     highValueOverride?: boolean | null;
     productionStartedAt?: Date | null;
     productionDeadline?: Date | null;
+    productionOriginalDeadline?: Date | null;
     productionDurationDays?: number | null;
+    qualityReviewStatus?: string | null;
+    fulfillmentStatus?: string | null;
     artisanPayout?: {
       status: string;
       fundingRequired: boolean;
@@ -257,7 +260,10 @@ export class OrdersService {
         readinessWorkflowStatus: dbOrder.readinessWorkflowStatus ?? null,
         productionStartedAt: dbOrder.productionStartedAt ?? null,
         productionDeadline: dbOrder.productionDeadline ?? null,
+        productionOriginalDeadline: dbOrder.productionOriginalDeadline ?? null,
         productionDurationDays: dbOrder.productionDurationDays ?? null,
+        qualityReviewStatus: dbOrder.qualityReviewStatus ?? null,
+        fulfillmentStatus: dbOrder.fulfillmentStatus ?? null,
         artisanPayout: dbOrder.artisanPayout ?? null,
       }),
       createdAt: dbOrder.createdAt.toISOString(),

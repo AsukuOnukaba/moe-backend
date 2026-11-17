@@ -468,4 +468,130 @@ export class NotificationsService {
       idempotencyKey: `order:${orderId}:production:started`,
     });
   }
+
+  async notifyProductionProgress(
+    adminId: number,
+    orderId: number,
+    productName: string,
+  ) {
+    return this.create({
+      userId: adminId,
+      type: 'order_update',
+      title: 'Production progress update',
+      body: `Artisan posted progress on "${productName}" (#${orderId}).`,
+      link: `/admin/orders?production=1&orderId=${orderId}`,
+      idempotencyKey: `order:${orderId}:production:progress:${Date.now()}:admin:${adminId}`,
+    });
+  }
+
+  async notifyProductionDeadlineExtended(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    deadline: Date,
+    hours: number,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Production deadline extended',
+      body: `"${productName}" deadline extended by ${hours}h to ${deadline.toLocaleString()}.`,
+      link: `/artisan/dashboard?tab=orders&orderView=pending`,
+      idempotencyKey: `order:${orderId}:production:extended:${deadline.toISOString()}`,
+    });
+  }
+
+  async notifyProductionOverdueArtisan(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Production overdue',
+      body: `"${productName}" is past its production deadline. Please update progress or submit for review.`,
+      link: `/artisan/dashboard?tab=orders&orderView=pending`,
+      idempotencyKey: `order:${orderId}:production:overdue:artisan`,
+    });
+  }
+
+  async notifyProductionOverdueAdmin(
+    adminId: number,
+    orderId: number,
+    productName: string,
+  ) {
+    return this.create({
+      userId: adminId,
+      type: 'order_update',
+      title: 'Production overdue',
+      body: `"${productName}" (#${orderId}) is past its production deadline.`,
+      link: `/admin/orders?production=1&orderId=${orderId}`,
+      idempotencyKey: `order:${orderId}:production:overdue:admin:${adminId}`,
+    });
+  }
+
+  async notifyProductionHalfway(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    deadline: Date,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Production midpoint',
+      body: `"${productName}" is halfway to deadline ${deadline.toLocaleString()}.`,
+      link: `/artisan/dashboard?tab=orders&orderView=pending`,
+      idempotencyKey: `order:${orderId}:production:reminder_50`,
+    });
+  }
+
+  async notifyQualitySubmitted(
+    adminId: number,
+    orderId: number,
+    productName: string,
+  ) {
+    return this.create({
+      userId: adminId,
+      type: 'order_update',
+      title: 'Quality review submitted',
+      body: `Artisan submitted "${productName}" (#${orderId}) for quality review.`,
+      link: `/admin/orders?quality=1&orderId=${orderId}`,
+      idempotencyKey: `order:${orderId}:quality:submitted:admin:${adminId}:${Date.now()}`,
+    });
+  }
+
+  async notifyQualityDecision(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    decision: string,
+    reason: string,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: `Quality review: ${decision.replace(/_/g, ' ')}`,
+      body: `"${productName}" — ${reason}`.trim(),
+      link: `/artisan/dashboard?tab=orders&orderView=pending`,
+      idempotencyKey: `order:${orderId}:quality:${decision}:${Date.now()}`,
+    });
+  }
+
+  async notifyDeliveryStatus(
+    userId: number,
+    orderId: number,
+    productName: string,
+    status: string,
+  ) {
+    return this.create({
+      userId,
+      type: 'order_update',
+      title: 'Delivery update',
+      body: `"${productName}" delivery status: ${status.replace(/_/g, ' ')}.`,
+      link: `/orders/${orderId}`,
+      idempotencyKey: `order:${orderId}:delivery:${status}`,
+    });
+  }
 }

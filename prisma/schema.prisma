@@ -315,20 +315,47 @@ model Order {
   /// Phase 2: set exactly once when Start Work is authorised.
   productionStartedAt         DateTime?
   productionDeadline          DateTime?
+  /// First deadline at Start Work — never overwritten by extensions.
+  productionOriginalDeadline  DateTime?
   productionStartedById       Int?
   /// Days used to compute productionDeadline (from approved readiness).
   productionDurationDays      Int?
 
+  /// Phase 2+ quality review (separate from fulfillment & payments).
+  /// null | in_production | submitted | changes_requested | approved | rejected
+  qualityReviewStatus         String?
+  qualitySubmittedAt          DateTime?
+  qualityApprovedAt           DateTime?
+  qualityApprovedById         Int?
+
+  /// Fulfillment sub-status after quality approval (separate from customer/artisan payment).
+  /// null | ready_for_delivery | dispatched | delivered | customer_accepted | delivery_disputed
+  fulfillmentStatus           String?
+  dispatchedAt                DateTime?
+  deliveredAt                 DateTime?
+  customerAcceptedAt          DateTime?
+  customerReviewDeadline      DateTime?
+  customerRating              Int?
+  customerReview              String?
+  finalPayoutReviewEligible   Boolean  @default(false)
+  finalPayoutEscalatedAt      DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  statusHistory         OrderStatusHistory[]
-  disputes              Dispute[]
-  paymentAttempts       PaymentAttempt[]
-  readinessAssessments  OrderReadinessAssessment[]
-  readinessReminders    OrderReadinessReminder[]
-  readinessEvents       OrderReadinessEvent[]
-  artisanPayout         OrderArtisanPayout?
+  statusHistory              OrderStatusHistory[]
+  disputes                   Dispute[]
+  paymentAttempts            PaymentAttempt[]
+  readinessAssessments       OrderReadinessAssessment[]
+  readinessReminders         OrderReadinessReminder[]
+  readinessEvents            OrderReadinessEvent[]
+  artisanPayout              OrderArtisanPayout?
+  productionProgressUpdates  OrderProductionProgressUpdate[]
+  productionDeadlineExtensions OrderProductionDeadlineExtension[]
+  productionEvents           OrderProductionEvent[]
+  productionReminders        OrderProductionReminder[]
+  qualitySubmissions         OrderQualitySubmission[]
+  deliveryEvents             OrderDeliveryEvent[]
 
   @@index([customerId])
   @@index([productId])
@@ -336,6 +363,9 @@ model Order {
   @@index([readinessWorkflowStatus])
   @@index([readinessResponseDeadline])
   @@index([productionStartedAt])
+  @@index([productionDeadline])
+  @@index([qualityReviewStatus])
+  @@index([fulfillmentStatus])
 }
 
 /// Versioned artisan readiness assessment for an order.
@@ -430,13 +460,14 @@ model OrderReadinessEvent {
   @@index([orderId, createdAt])
 }
 
-/// Phase 2 Batch 1B — initial artisan payout (separate from customer PaymentAttempt).
+/// Phase 2 Batch 1B — artisan payout ledger (separate from customer PaymentAttempt).
 model OrderArtisanPayout {
   id                    Int       @id @default(autoincrement())
   orderId               Int       @unique
   assessmentId          Int?
   currency              String    @default("NGN")
   requestedAmount       Float?
+  /// Initial material funding approved amount (Batch 1B).
   approvedAmount        Float?
   amountApprovedById    Int?
   amountApprovedAt      DateTime?
@@ -450,6 +481,12 @@ model OrderArtisanPayout {
   status                String    @default("requested")
   disputeFlag           Boolean   @default(false)
   disputeNotes          String?
+  /// Total approved artisan payable across milestones (may equal sum of milestones).
+  totalPayableAmount    Float?
+  totalPayableApprovedById Int?
+  totalPayableApprovedAt   DateTime?
+  totalPayableReason       String?
+  totalPayableExceptionApproved Boolean @default(false)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -457,14 +494,44 @@ model OrderArtisanPayout {
   assessment OrderReadinessAssessment?    @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
   transfers  OrderArtisanPayoutTransfer[]
   events     OrderArtisanPayoutEvent[]
+  milestones OrderArtisanPayoutMilestone[]
 
   @@index([status])
   @@index([assessmentId])
 }
 
+model OrderArtisanPayoutMilestone {
+  id                 Int       @id @default(autoincrement())
+  payoutId           Int
+  /// initial | intermediate | final
+  kind               String
+  name               String
+  description        String?
+  sequence           Int       @default(0)
+  approvedAmount     Float
+  currency           String    @default("NGN")
+  /// planned | eligible | amount_approved | recorded | verified | disputed | reversed | cancelled
+  status             String    @default("planned")
+  dueConditions      Json?
+  amountApprovedById Int?
+  amountApprovedAt   DateTime?
+  eligibleAt         DateTime?
+  exceptionApproved  Boolean   @default(false)
+  exceptionReason    String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  payout    OrderArtisanPayout            @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  transfers OrderArtisanPayoutTransfer[]
+
+  @@index([payoutId, sequence])
+  @@index([status])
+}
+
 model OrderArtisanPayoutTransfer {
   id                 Int       @id @default(autoincrement())
   payoutId           Int
+  milestoneId        Int?
   amount             Float
   currency           String
   transferDate       DateTime
@@ -481,10 +548,12 @@ model OrderArtisanPayoutTransfer {
   verificationNotes  String?
   rejectionReason    String?
 
-  payout   OrderArtisanPayout            @relation(fields: [payoutId], references: [id], onDelete: Cascade)
-  evidence OrderArtisanPayoutEvidence[]
+  payout    OrderArtisanPayout            @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  milestone OrderArtisanPayoutMilestone?  @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  evidence  OrderArtisanPayoutEvidence[]
 
   @@index([payoutId, status])
+  @@index([milestoneId])
   @@index([recordedById])
 }
 
@@ -509,7 +578,7 @@ model OrderArtisanPayoutEvent {
   payoutId  Int
   orderId   Int
   actorId   Int?
-  /// amount_approved | funding_not_required | transfer_recorded | transfer_verified | transfer_rejected | disputed | reversed | start_work
+  /// amount_approved | funding_not_required | transfer_recorded | transfer_verified | transfer_rejected | disputed | reversed | start_work | milestone_*
   action    String
   detail    Json?
   createdAt DateTime @default(now())
@@ -517,6 +586,152 @@ model OrderArtisanPayoutEvent {
   payout OrderArtisanPayout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
 
   @@index([payoutId, createdAt])
+  @@index([orderId, createdAt])
+}
+
+/// Batch A — artisan production progress notes + evidence.
+model OrderProductionProgressUpdate {
+  id              Int      @id @default(autoincrement())
+  orderId         Int
+  artisanId       Int
+  note            String
+  percentComplete Int?
+  createdAt       DateTime @default(now())
+
+  order    Order                            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  evidence OrderProductionProgressEvidence[]
+
+  @@index([orderId, createdAt])
+  @@index([artisanId])
+}
+
+model OrderProductionProgressEvidence {
+  id                     Int      @id @default(autoincrement())
+  progressUpdateId       Int
+  attachmentPublicId     String
+  attachmentResourceType String
+  attachmentName         String
+  attachmentMimeType     String
+  attachmentBytes        Int?
+  /// image | document | voice
+  attachmentKind         String
+  durationMs             Int?
+  createdAt              DateTime @default(now())
+
+  progressUpdate OrderProductionProgressUpdate @relation(fields: [progressUpdateId], references: [id], onDelete: Cascade)
+
+  @@index([progressUpdateId])
+}
+
+model OrderProductionDeadlineExtension {
+  id               Int      @id @default(autoincrement())
+  orderId          Int
+  previousDeadline DateTime
+  newDeadline      DateTime
+  extraHours       Int
+  reason           String
+  extendedById     Int
+  createdAt        DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+model OrderProductionEvent {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  actorId   Int?
+  /// progress_submitted | deadline_extended | overdue | reminder
+  action    String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+model OrderProductionReminder {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  /// reminder_50 | overdue
+  kind      String
+  sentAt    DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, kind])
+  @@index([orderId])
+}
+
+/// Batch B — quality submission for admin review.
+model OrderQualitySubmission {
+  id                 Int       @id @default(autoincrement())
+  orderId            Int
+  version            Int
+  artisanId          Int
+  /// submitted | changes_requested | approved | rejected | superseded
+  status             String    @default("submitted")
+  description        String
+  specsConfirmed     Boolean   @default(false)
+  outstandingIssues  String?
+  submittedAt        DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  order    Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  evidence OrderQualityEvidence[]
+  reviews  OrderQualityReview[]
+
+  @@unique([orderId, version])
+  @@index([orderId, status])
+}
+
+model OrderQualityEvidence {
+  id                     Int      @id @default(autoincrement())
+  submissionId           Int
+  attachmentPublicId     String
+  attachmentResourceType String
+  attachmentName         String
+  attachmentMimeType     String
+  attachmentBytes        Int?
+  /// image | document | voice
+  attachmentKind         String
+  durationMs             Int?
+  createdAt              DateTime @default(now())
+
+  submission OrderQualitySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+}
+
+model OrderQualityReview {
+  id           Int      @id @default(autoincrement())
+  submissionId Int
+  reviewerId   Int
+  /// approve | request_rework | reject | escalate_dispute
+  decision     String
+  reason       String?
+  createdAt    DateTime @default(now())
+
+  submission OrderQualitySubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([reviewerId])
+}
+
+model OrderDeliveryEvent {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  actorId   Int?
+  /// ready_for_delivery | dispatched | delivered | customer_accepted | delivery_disputed | review_window_elapsed | final_payout_eligible | escalated
+  action    String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
   @@index([orderId, createdAt])
 }
 

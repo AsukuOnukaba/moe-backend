@@ -327,7 +327,10 @@ export class ArtisanPayoutService {
     readinessWorkflowStatus: string | null;
     productionStartedAt: Date | null;
     productionDeadline: Date | null;
+    productionOriginalDeadline?: Date | null;
     productionDurationDays: number | null;
+    qualityReviewStatus?: string | null;
+    fulfillmentStatus?: string | null;
     artisanPayout?: {
       status: string;
       fundingRequired: boolean;
@@ -355,6 +358,9 @@ export class ArtisanPayoutService {
       order.readinessWorkflowStatus === 'approved' &&
       fundingOk &&
       !order.productionStartedAt;
+    const now = Date.now();
+    const startedMs = order.productionStartedAt?.getTime() ?? null;
+    const deadlineMs = order.productionDeadline?.getTime() ?? null;
     return {
       payoutStatus: (payout?.status as PayoutStatus | undefined) ?? null,
       fundingRequired: payout?.fundingRequired ?? true,
@@ -365,14 +371,29 @@ export class ArtisanPayoutService {
       disputeFlag: payout?.disputeFlag ?? false,
       productionStartedAt: order.productionStartedAt?.toISOString() ?? null,
       productionDeadline: order.productionDeadline?.toISOString() ?? null,
+      productionOriginalDeadline:
+        order.productionOriginalDeadline?.toISOString() ??
+        order.productionDeadline?.toISOString() ??
+        null,
       productionDurationDays: order.productionDurationDays ?? null,
+      msElapsed: startedMs != null ? Math.max(0, now - startedMs) : null,
+      msRemaining: deadlineMs != null ? deadlineMs - now : null,
+      overdue: deadlineMs != null ? deadlineMs <= now : false,
+      qualityReviewStatus: order.qualityReviewStatus ?? null,
+      fulfillmentStatus: order.fulfillmentStatus ?? null,
       awaitingInitialPayout:
         order.readinessWorkflowStatus === 'approved' &&
         !fundingOk &&
         !order.productionStartedAt,
       readyToStart,
       displayLabel: order.productionStartedAt
-        ? 'In production'
+        ? order.qualityReviewStatus === 'submitted'
+          ? 'Quality review'
+          : order.qualityReviewStatus === 'changes_requested'
+            ? 'Rework requested'
+            : order.fulfillmentStatus
+              ? order.fulfillmentStatus.replace(/_/g, ' ')
+              : 'In production'
         : readyToStart
           ? 'Ready to Start'
           : order.readinessWorkflowStatus === 'approved'
@@ -716,6 +737,28 @@ export class ArtisanPayoutService {
         },
       },
     });
+
+    // Mirror initial funding as milestone row (idempotent helpers live in milestone service).
+    const existingInitial = await this.prisma.orderArtisanPayoutMilestone.findFirst({
+      where: { payoutId: updated.id, kind: 'initial' },
+    });
+    if (!existingInitial && body.approvedAmount > 0) {
+      await this.prisma.orderArtisanPayoutMilestone.create({
+        data: {
+          payoutId: updated.id,
+          kind: 'initial',
+          name: 'Initial material funding',
+          description: 'Initial artisan payout',
+          sequence: 0,
+          approvedAmount: body.approvedAmount,
+          currency,
+          status: 'amount_approved',
+          amountApprovedById: admin.sub,
+          amountApprovedAt: new Date(),
+          eligibleAt: new Date(),
+        },
+      });
+    }
 
     return updated;
   }
@@ -1354,8 +1397,10 @@ export class ArtisanPayoutService {
           data: {
             productionStartedAt: startedAt,
             productionDeadline: deadline,
+            productionOriginalDeadline: deadline,
             productionStartedById: user.sub,
             productionDurationDays: durationDays,
+            qualityReviewStatus: 'in_production',
             status: 'in_progress',
           },
         });

@@ -35,6 +35,7 @@ import type {
   StandardReadinessPayload,
   SubmitReadinessBody,
 } from './dto/submit-readiness.dto';
+import { ArtisanPayoutService } from './artisan-payout.service';
 
 @Injectable()
 export class OrderReadinessService {
@@ -42,6 +43,7 @@ export class OrderReadinessService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly artisanPayouts: ArtisanPayoutService,
   ) {}
 
   highValueThresholdNgn(): number {
@@ -691,10 +693,19 @@ export class OrderReadinessService {
         reviewedAt: new Date().toISOString(),
         providerId: order.providerId,
         productName: order.productName,
+        currency: order.currency,
+        payload: assessment.payload,
         reason: body.reason?.trim() || null,
       };
     }).then(async (result) => {
       if (result.decision === 'approve') {
+        await this.artisanPayouts.ensurePayoutAfterReadinessApproval({
+          orderId: result.orderId,
+          assessmentId: result.assessmentId,
+          currency: result.currency || 'NGN',
+          payload: result.payload,
+          actorId: result.reviewerId,
+        });
         await this.notifications.notifyReadinessApproved(
           result.providerId,
           result.orderId,
@@ -864,6 +875,13 @@ export class OrderReadinessService {
             take: 1,
             include: { reviews: { orderBy: { createdAt: 'desc' }, take: 1 } },
           },
+          artisanPayout: {
+            include: {
+              transfers: {
+                select: { amount: true, currency: true, status: true },
+              },
+            },
+          },
         },
       }),
     ]);
@@ -880,6 +898,7 @@ export class OrderReadinessService {
         status: order.status,
         isCustomOrder: order.isCustomOrder,
         readiness: this.readinessSummary(order),
+        production: this.artisanPayouts.payoutSummaryForOrder(order),
         latestAssessment: order.readinessAssessments[0]
           ? this.assessmentDto(order.id, {
               ...order.readinessAssessments[0],
@@ -1026,15 +1045,19 @@ export class OrderReadinessService {
     return order.status === 'pending';
   }
 
-  /** Phase 1: block production start when readiness workflow is active. */
-  assertProductionStartAllowed(order: {
+  /**
+   * Phase 2: readiness-workflow orders may only enter production via Start Work
+   * after verified initial payout (or audited funding-not-required).
+   */
+  async assertProductionStartAllowed(order: {
+    id: number;
     readinessWorkflowStatus: string | null;
+    productionStartedAt?: Date | null;
   }) {
-    if (!order.readinessWorkflowStatus) return;
-    throw new BadRequestException({
-      message:
-        'Start Work is not available until admin readiness approval and confirmed initial artisan payout (Phase 2).',
-      code: 'READINESS_PRODUCTION_BLOCKED',
+    await this.artisanPayouts.assertProductionStartAllowed({
+      id: order.id,
+      readinessWorkflowStatus: order.readinessWorkflowStatus,
+      productionStartedAt: order.productionStartedAt ?? null,
     });
   }
 }

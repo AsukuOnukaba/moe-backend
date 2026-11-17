@@ -23,6 +23,7 @@ import {
 } from './artisan-order-views';
 import { NEW_ORDERS_READINESS_STATUSES } from './readiness.constants';
 import { OrderReadinessService } from './order-readiness.service';
+import { ArtisanPayoutService } from './artisan-payout.service';
 
 type ShippingAddress = {
   firstName: string;
@@ -62,6 +63,7 @@ type Order = {
   estimatedDelivery: string | null;
   artisanName: string | null;
   readiness?: ReturnType<OrderReadinessService['readinessSummary']>;
+  production?: ReturnType<ArtisanPayoutService['payoutSummaryForOrder']>;
   createdAt: string;
   updatedAt: string;
 };
@@ -98,6 +100,7 @@ export class OrdersService {
     private readonly notifications: NotificationsService,
     private readonly paymentMethods: PaymentMethodsService,
     private readonly readiness: OrderReadinessService,
+    private readonly artisanPayouts: ArtisanPayoutService,
   ) {}
 
   private normalizeShippingAddress(
@@ -200,6 +203,18 @@ export class OrdersService {
     readinessExtensionReason?: string | null;
     readinessWorkflowStatus?: string | null;
     highValueOverride?: boolean | null;
+    productionStartedAt?: Date | null;
+    productionDeadline?: Date | null;
+    productionDurationDays?: number | null;
+    artisanPayout?: {
+      status: string;
+      fundingRequired: boolean;
+      requestedAmount: number | null;
+      approvedAmount: number | null;
+      currency: string;
+      disputeFlag: boolean;
+      transfers?: Array<{ amount: number; currency: string; status: string }>;
+    } | null;
   }): Order {
     const readinessFields = {
       readinessAssignedAt: dbOrder.readinessAssignedAt ?? null,
@@ -238,6 +253,13 @@ export class OrdersService {
       estimatedDelivery: dbOrder.estimatedDelivery,
       artisanName: dbOrder.providerName,
       readiness: this.readiness.readinessSummary(readinessFields),
+      production: this.artisanPayouts.payoutSummaryForOrder({
+        readinessWorkflowStatus: dbOrder.readinessWorkflowStatus ?? null,
+        productionStartedAt: dbOrder.productionStartedAt ?? null,
+        productionDeadline: dbOrder.productionDeadline ?? null,
+        productionDurationDays: dbOrder.productionDurationDays ?? null,
+        artisanPayout: dbOrder.artisanPayout ?? null,
+      }),
       createdAt: dbOrder.createdAt.toISOString(),
       updatedAt: dbOrder.updatedAt.toISOString(),
     };
@@ -306,6 +328,15 @@ export class OrdersService {
       skip,
       take: pageSize,
       orderBy: { createdAt: 'desc' },
+      include: {
+        artisanPayout: {
+          include: {
+            transfers: {
+              select: { amount: true, currency: true, status: true },
+            },
+          },
+        },
+      },
     });
 
     let summary: ReturnType<typeof summarizeArtisanOrders> | undefined;
@@ -322,7 +353,17 @@ export class OrdersService {
           where: {
             providerId: user.sub,
             readinessWorkflowStatus: { in: [...NEW_ORDERS_READINESS_STATUSES] },
-            status: { notIn: ['cancelled', 'rejected'] },
+            productionStartedAt: null,
+            status: {
+              notIn: [
+                'cancelled',
+                'rejected',
+                'in_progress',
+                'ready',
+                'shipped',
+                'delivered',
+              ],
+            },
           },
         }),
         this.prisma.order.count({
@@ -379,6 +420,15 @@ export class OrdersService {
   async getById(user: AccessTokenPayload, orderId: string) {
     const dbOrder = await this.prisma.order.findUnique({
       where: { id: Number(orderId) },
+      include: {
+        artisanPayout: {
+          include: {
+            transfers: {
+              select: { amount: true, currency: true, status: true },
+            },
+          },
+        },
+      },
     });
     if (!dbOrder || !this.canAccessOrder(user, dbOrder)) return null;
 
@@ -481,14 +531,23 @@ export class OrdersService {
 
     this.assertStatusTransition(dbOrder.status, nextStatus);
 
-    // Phase 1: readiness workflow blocks production start (confirmed → in_progress).
+    // Phase 2: readiness orders must use Start Work; closes artisan bypass.
     if (nextStatus === 'in_progress') {
-      this.readiness.assertProductionStartAllowed(dbOrder);
+      await this.readiness.assertProductionStartAllowed(dbOrder);
     }
 
     const updated = await this.prisma.order.update({
       where: { id },
       data: { status: nextStatus },
+      include: {
+        artisanPayout: {
+          include: {
+            transfers: {
+              select: { amount: true, currency: true, status: true },
+            },
+          },
+        },
+      },
     });
 
     await this.appendStatusHistory(id, nextStatus, user.sub, body.note);
@@ -1057,6 +1116,10 @@ export class OrdersService {
       }
       nextStatus = status;
       this.assertStatusTransition(dbOrder.status, status);
+      // Phase 2: close adminPatch bypass for production start.
+      if (status === 'in_progress') {
+        await this.readiness.assertProductionStartAllowed(dbOrder);
+      }
     }
 
     if (typeof body?.paymentStatus === 'string') {
@@ -1084,6 +1147,15 @@ export class OrdersService {
           ? { paymentStatus: body.paymentStatus.trim() }
           : {}),
         ...(typeof body?.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
+      },
+      include: {
+        artisanPayout: {
+          include: {
+            transfers: {
+              select: { amount: true, currency: true, status: true },
+            },
+          },
+        },
       },
     });
 

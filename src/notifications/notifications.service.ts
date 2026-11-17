@@ -437,4 +437,35 @@ export class NotificationsService {
       idempotencyKey: `order:${orderId}:readiness:extended:${deadline.toISOString()}`,
     });
   }
+
+  async notifyArtisanPayoutVerified(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Initial payout verified',
+      body: `Initial funding for "${productName}" is verified. You can Start Work.`,
+      link: this.readinessArtisanLink(orderId),
+      idempotencyKey: `order:${orderId}:artisan-payout:verified`,
+    });
+  }
+
+  async notifyProductionStarted(
+    artisanId: number,
+    orderId: number,
+    productName: string,
+    deadline: Date,
+  ) {
+    return this.create({
+      userId: artisanId,
+      type: 'order_update',
+      title: 'Production started',
+      body: `Work started on "${productName}". Production deadline: ${deadline.toLocaleString()}.`,
+      link: `/artisan/dashboard?tab=orders&orderView=pending`,
+      idempotencyKey: `order:${orderId}:production:started`,
+    });
+  }
 }

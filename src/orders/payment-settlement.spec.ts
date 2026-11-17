@@ -30,11 +30,16 @@ describe('verified payment settlement', () => {
       assignReadinessOnCreate: jest.fn(),
       assertProductionStartAllowed: jest.fn(),
     };
+    const artisanPayouts = {
+      payoutSummaryForOrder: () => null,
+      assertProductionStartAllowed: jest.fn(),
+    };
     const orders = new OrdersService(
       prisma as never,
       notifications as never,
       {} as never,
       readiness as never,
+      artisanPayouts as never,
     );
     return { orders, updates, prisma, notifications, order };
   }
@@ -114,6 +119,7 @@ describe('verified payment settlement', () => {
         assignReadinessOnCreate: jest.fn(),
         assertProductionStartAllowed: jest.fn(),
       } as never,
+      { payoutSummaryForOrder: () => null } as never,
     );
     const result = await orders.patch(
       { sub: 3, email: 'ada@example.com', role: 'customer' },

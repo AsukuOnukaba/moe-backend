@@ -45,14 +45,24 @@ export function isNewOrdersReadinessStatus(
   );
 }
 
-/** Prisma where-fragment for artisan New Orders (Phase 1 + legacy). */
+/** Prisma where-fragment for artisan New Orders (Phase 1/2 + legacy). */
 export function artisanNewOrdersWhere(providerId: number) {
   return {
     providerId,
     OR: [
       {
         readinessWorkflowStatus: { in: [...NEW_ORDERS_READINESS_STATUSES] },
-        status: { notIn: ['cancelled', 'rejected'] },
+        productionStartedAt: null,
+        status: {
+          notIn: [
+            'cancelled',
+            'rejected',
+            'in_progress',
+            'ready',
+            'shipped',
+            'delivered',
+          ],
+        },
       },
       {
         readinessWorkflowStatus: null,

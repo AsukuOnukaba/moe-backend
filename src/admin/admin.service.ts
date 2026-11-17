@@ -931,6 +931,8 @@ export class AdminService {
       city?: string;
       state?: string;
       about?: string;
+      /** Finance/payout capabilities for admin users (Batch 1B). */
+      adminCapabilities?: string[];
     },
   ) {
     const user = await this.prisma.user.findUnique({
@@ -941,7 +943,7 @@ export class AdminService {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
 
-    const userData: Record<string, string | null> = {};
+    const userData: Record<string, string | null | string[]> = {};
     if (body.name !== undefined) userData.name = body.name.trim();
     if (body.phone !== undefined) userData.phone = body.phone.trim() || null;
     if (body.email !== undefined) {
@@ -956,6 +958,15 @@ export class AdminService {
         }
         userData.email = email;
       }
+    }
+    if (body.adminCapabilities !== undefined) {
+      if (!Array.isArray(body.adminCapabilities)) {
+        throw new BadRequestException({
+          message: 'adminCapabilities must be an array of strings',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      userData.adminCapabilities = body.adminCapabilities.map((c) => String(c).trim()).filter(Boolean);
     }
 
     if (Object.keys(userData).length > 0) {

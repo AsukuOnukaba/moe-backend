@@ -6,12 +6,25 @@ import { OrdersService } from './orders.service';
 import { OrderReadinessController } from './order-readiness.controller';
 import { OrderReadinessService } from './order-readiness.service';
 import { OrderReadinessScheduler } from './order-readiness.scheduler';
+import { ArtisanPayoutController } from './artisan-payout.controller';
+import { ArtisanPayoutService } from './artisan-payout.service';
+import { AdminCapabilitiesService } from '../auth/admin-capabilities.service';
 
 @Module({
   imports: [NotificationsModule, forwardRef(() => PaymentsModule)],
-  controllers: [OrderReadinessController, OrdersController],
-  providers: [OrdersService, OrderReadinessService, OrderReadinessScheduler],
-  exports: [OrdersService, OrderReadinessService],
+  controllers: [
+    OrderReadinessController,
+    ArtisanPayoutController,
+    OrdersController,
+  ],
+  providers: [
+    OrdersService,
+    OrderReadinessService,
+    OrderReadinessScheduler,
+    ArtisanPayoutService,
+    AdminCapabilitiesService,
+  ],
+  exports: [OrdersService, OrderReadinessService, ArtisanPayoutService],
 })
 export class OrdersModule {}
 

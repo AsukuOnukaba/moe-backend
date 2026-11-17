@@ -27,6 +27,9 @@ model User {
   emailVerificationSentAt   DateTime?
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
+  /// Admin action capabilities (finance/payout). Empty = no finance actions.
+  /// e.g. payout_amount_approve, payout_transfer_record, payout_transfer_verify, payout_dispute, payout_mark_not_required
+  adminCapabilities         String[]  @default([])
 
   roles          UserRole[]
   refreshTokens  RefreshToken[]
@@ -309,6 +312,13 @@ model Order {
   /// Admin/config override: force detailed assessment regardless of price.
   highValueOverride           Boolean?
 
+  /// Phase 2: set exactly once when Start Work is authorised.
+  productionStartedAt         DateTime?
+  productionDeadline          DateTime?
+  productionStartedById       Int?
+  /// Days used to compute productionDeadline (from approved readiness).
+  productionDurationDays      Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -318,12 +328,14 @@ model Order {
   readinessAssessments  OrderReadinessAssessment[]
   readinessReminders    OrderReadinessReminder[]
   readinessEvents       OrderReadinessEvent[]
+  artisanPayout         OrderArtisanPayout?
 
   @@index([customerId])
   @@index([productId])
   @@index([providerId])
   @@index([readinessWorkflowStatus])
   @@index([readinessResponseDeadline])
+  @@index([productionStartedAt])
 }
 
 /// Versioned artisan readiness assessment for an order.
@@ -348,6 +360,7 @@ model OrderReadinessAssessment {
   order    Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   evidence OrderReadinessEvidence[]
   reviews  OrderReadinessReview[]
+  artisanPayouts OrderArtisanPayout[]
 
   @@unique([orderId, version])
   @@index([orderId, status])
@@ -414,6 +427,96 @@ model OrderReadinessEvent {
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@index([orderId, createdAt])
+}
+
+/// Phase 2 Batch 1B — initial artisan payout (separate from customer PaymentAttempt).
+model OrderArtisanPayout {
+  id                    Int       @id @default(autoincrement())
+  orderId               Int       @unique
+  assessmentId          Int?
+  currency              String    @default("NGN")
+  requestedAmount       Float?
+  approvedAmount        Float?
+  amountApprovedById    Int?
+  amountApprovedAt      DateTime?
+  amountApprovalReason  String?
+  exceptionApproved     Boolean   @default(false)
+  exceptionReason       String?
+  /// configured | missing | exceeded_with_exception | not_applicable
+  limitPolicyStatus     String?
+  fundingRequired       Boolean   @default(true)
+  /// requested | amount_approved | recorded | verified | rejected | disputed | reversed | not_required
+  status                String    @default("requested")
+  disputeFlag           Boolean   @default(false)
+  disputeNotes          String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  order      Order                        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  assessment OrderReadinessAssessment?    @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  transfers  OrderArtisanPayoutTransfer[]
+  events     OrderArtisanPayoutEvent[]
+
+  @@index([status])
+  @@index([assessmentId])
+}
+
+model OrderArtisanPayoutTransfer {
+  id                 Int       @id @default(autoincrement())
+  payoutId           Int
+  amount             Float
+  currency           String
+  transferDate       DateTime
+  payeeName          String
+  payeeDetails       String?
+  /// Unique bank/transfer reference — prevents duplicate recording.
+  externalReference  String    @unique
+  /// recorded | verified | rejected | disputed | reversed
+  status             String    @default("recorded")
+  recordedById       Int
+  recordedAt         DateTime  @default(now())
+  verifiedById       Int?
+  verifiedAt         DateTime?
+  verificationNotes  String?
+  rejectionReason    String?
+
+  payout   OrderArtisanPayout            @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  evidence OrderArtisanPayoutEvidence[]
+
+  @@index([payoutId, status])
+  @@index([recordedById])
+}
+
+model OrderArtisanPayoutEvidence {
+  id                     Int      @id @default(autoincrement())
+  transferId             Int
+  attachmentPublicId     String
+  attachmentResourceType String
+  attachmentName         String
+  attachmentMimeType     String
+  attachmentBytes        Int?
+  attachmentKind         String
+  createdAt              DateTime @default(now())
+
+  transfer OrderArtisanPayoutTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([transferId])
+}
+
+model OrderArtisanPayoutEvent {
+  id        Int      @id @default(autoincrement())
+  payoutId  Int
+  orderId   Int
+  actorId   Int?
+  /// amount_approved | funding_not_required | transfer_recorded | transfer_verified | transfer_rejected | disputed | reversed | start_work
+  action    String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  payout OrderArtisanPayout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  @@index([payoutId, createdAt])
   @@index([orderId, createdAt])
 }
 

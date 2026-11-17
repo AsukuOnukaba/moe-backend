@@ -10,11 +10,23 @@ describe('OrderReadinessService', () => {
       key === 'ORDER_HIGH_VALUE_THRESHOLD_NGN' ? '200000' : undefined,
   };
 
-  function build(prisma: Record<string, unknown>, notifications: Record<string, unknown> = {}) {
+  function build(
+    prisma: Record<string, unknown>,
+    notifications: Record<string, unknown> = {},
+    artisanPayouts: Record<string, unknown> = {
+      ensurePayoutAfterReadinessApproval: jest.fn(async () => ({})),
+      assertProductionStartAllowed: jest.fn(async (order: { readinessWorkflowStatus: string | null; productionStartedAt?: Date | null }) => {
+        if (!order.readinessWorkflowStatus) return;
+        if (order.productionStartedAt) return;
+        throw new Error('Start Work is not available until admin readiness approval and confirmed initial artisan payout (Phase 2).');
+      }),
+    },
+  ) {
     return new OrderReadinessService(
       prisma as never,
       notifications as never,
       config as never,
+      artisanPayouts as never,
     );
   }
 
@@ -53,18 +65,22 @@ describe('OrderReadinessService', () => {
       {} as never,
       {} as never,
       { get: () => undefined } as never,
+      {
+        ensurePayoutAfterReadinessApproval: jest.fn(),
+        assertProductionStartAllowed: jest.fn(),
+      } as never,
     );
     expect(svc.highValueThresholdNgn()).toBe(DEFAULT_HIGH_VALUE_THRESHOLD_NGN);
   });
 
-  it('blocks production start when readiness workflow is active', () => {
+  it('blocks production start when readiness workflow is active', async () => {
     const svc = build({});
-    expect(() =>
-      svc.assertProductionStartAllowed({ readinessWorkflowStatus: 'approved' }),
-    ).toThrow(/Phase 2/);
-    expect(() =>
-      svc.assertProductionStartAllowed({ readinessWorkflowStatus: null }),
-    ).not.toThrow();
+    await expect(
+      svc.assertProductionStartAllowed({ id: 1, readinessWorkflowStatus: 'approved' }),
+    ).rejects.toThrow(/Phase 2/);
+    await expect(
+      svc.assertProductionStartAllowed({ id: 2, readinessWorkflowStatus: null }),
+    ).resolves.toBeUndefined();
   });
 
   it('assigns a 24h persistent deadline and notifies the artisan', async () => {

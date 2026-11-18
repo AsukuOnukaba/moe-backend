@@ -13,6 +13,7 @@ export class OrderReadinessScheduler {
     timeZone: process.env.APP_TIMEZONE || 'Africa/Lagos',
   })
   async tick() {
+    if (process.env.ORDER_SCHEDULERS_ENABLED === 'false') return;
     try {
       const result = await this.readiness.processDeadlines(new Date());
       if (

@@ -768,11 +768,19 @@ export class OrderQualityService {
           ['delivered', 'dispatched'].includes(e.action),
         );
       // Never auto-transfer money — only eligibility / escalation flags.
+      // Conditional updates keep multi-instance / restart ticks idempotent.
       if (!hasOpenDispute && deliveryEvidenced) {
-        await this.prisma.order.update({
-          where: { id: order.id },
+        const claimed = await this.prisma.order.updateMany({
+          where: {
+            id: order.id,
+            finalPayoutReviewEligible: false,
+            finalPayoutEscalatedAt: null,
+            fulfillmentStatus: 'delivered',
+            customerAcceptedAt: null,
+          },
           data: { finalPayoutReviewEligible: true },
         });
+        if (claimed.count !== 1) continue;
         await this.prisma.orderDeliveryEvent.create({
           data: {
             orderId: order.id,
@@ -787,10 +795,17 @@ export class OrderQualityService {
         });
         eligible += 1;
       } else {
-        await this.prisma.order.update({
-          where: { id: order.id },
+        const claimed = await this.prisma.order.updateMany({
+          where: {
+            id: order.id,
+            finalPayoutReviewEligible: false,
+            finalPayoutEscalatedAt: null,
+            fulfillmentStatus: 'delivered',
+            customerAcceptedAt: null,
+          },
           data: { finalPayoutEscalatedAt: now },
         });
+        if (claimed.count !== 1) continue;
         await this.prisma.orderDeliveryEvent.create({
           data: {
             orderId: order.id,

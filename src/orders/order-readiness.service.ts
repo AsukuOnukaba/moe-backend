@@ -544,14 +544,18 @@ export class OrderReadinessService {
       select: { id: true },
       take: 50,
     });
+    // Assessment is already persisted — notification fan-out must not roll back
+    // the HTTP success (pool pressure / transient DB errors are non-fatal here).
     await Promise.all(
       admins.map((admin) =>
-        this.notifications.notifyReadinessSubmitted(
-          admin.id,
-          orderId,
-          order.productName ?? `Order #${orderId}`,
-          assessment.id,
-        ),
+        this.notifications
+          .notifyReadinessSubmitted(
+            admin.id,
+            orderId,
+            order.productName ?? `Order #${orderId}`,
+            assessment.id,
+          )
+          .catch(() => undefined),
       ),
     );
 

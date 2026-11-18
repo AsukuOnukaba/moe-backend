@@ -17,9 +17,14 @@ function dbUrl() {
   const base =
     process.env.DATABASE_URL?.replace('@localhost:', '@127.0.0.1:') ??
     'postgresql://postgres:postgres@127.0.0.1:5432/moe_dev?schema=public';
-  return base.includes('connect_timeout=')
-    ? base
-    : `${base}${base.includes('?') ? '&' : '?'}connect_timeout=30`;
+  const params: string[] = [];
+  if (!base.includes('connect_timeout=')) params.push('connect_timeout=30');
+  // Integration suites create a dedicated PrismaClient; keep the pool small so
+  // parallel Nest/dev clients do not exhaust Postgres (environment flake).
+  if (!base.includes('connection_limit=')) params.push('connection_limit=5');
+  if (!base.includes('pool_timeout=')) params.push('pool_timeout=30');
+  if (!params.length) return base;
+  return `${base}${base.includes('?') ? '&' : '?'}${params.join('&')}`;
 }
 const prisma = new PrismaClient({
   datasources: { db: { url: dbUrl() } },

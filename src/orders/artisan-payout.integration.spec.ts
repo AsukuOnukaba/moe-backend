@@ -13,7 +13,17 @@ import { OrdersService } from './orders.service';
 import { PAYOUT_CAPABILITIES } from './payout.constants';
 
 const TAG = `batch1c-${Date.now()}`;
-const prisma = new PrismaClient();
+function dbUrl() {
+  const base =
+    process.env.DATABASE_URL?.replace('@localhost:', '@127.0.0.1:') ??
+    'postgresql://postgres:postgres@127.0.0.1:5432/moe_dev?schema=public';
+  return base.includes('connect_timeout=')
+    ? base
+    : `${base}${base.includes('?') ? '&' : '?'}connect_timeout=30`;
+}
+const prisma = new PrismaClient({
+  datasources: { db: { url: dbUrl() } },
+});
 
 function asPrismaService(): PrismaService {
   return prisma as unknown as PrismaService;
@@ -49,7 +59,18 @@ describe('Artisan payout Batch 1C (PostgreSQL)', () => {
   let createdOrderIds: number[] = [];
 
   beforeAll(async () => {
-    await prisma.$connect();
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      try {
+        await prisma.$connect();
+        lastErr = undefined;
+        break;
+      } catch (err) {
+        lastErr = err;
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+      }
+    }
+    if (lastErr) throw lastErr;
 
     const hash = await bcrypt.hash('password123', 10);
     for (const name of ['admin', 'artisan', 'customer'] as const) {

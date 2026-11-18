@@ -14,6 +14,7 @@ import { OrderProductionService } from './order-production.service';
 import { OrderProductionScheduler } from './order-production.scheduler';
 import { OrderQualityController } from './order-quality.controller';
 import { OrderQualityService } from './order-quality.service';
+import { OrderQualityScheduler } from './order-quality.scheduler';
 import { OrderMilestoneController } from './order-milestone.controller';
 import { OrderMilestoneService } from './order-milestone.service';
 
@@ -36,6 +37,7 @@ import { OrderMilestoneService } from './order-milestone.service';
     OrderProductionService,
     OrderProductionScheduler,
     OrderQualityService,
+    OrderQualityScheduler,
     OrderMilestoneService,
   ],
   exports: [

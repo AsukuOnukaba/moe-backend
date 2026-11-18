@@ -356,6 +356,8 @@ model Order {
   productionReminders        OrderProductionReminder[]
   qualitySubmissions         OrderQualitySubmission[]
   deliveryEvents             OrderDeliveryEvent[]
+  productReviews             ProductReview[]
+  artisanReviews             ArtisanReview[]
 
   @@index([customerId])
   @@index([productId])
@@ -847,6 +849,8 @@ model ProductReview {
   id         Int      @id @default(autoincrement())
   productId  Int
   customerId Int
+  /// When set, ties this review to a completed order (at most one per order).
+  orderId    Int?     @unique
   rating     Int
   review     String?
   status     String   @default("approved")
@@ -855,15 +859,19 @@ model ProductReview {
 
   product  Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   customer User    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order    Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@unique([customerId, productId])
   @@index([productId])
+  @@index([orderId])
 }
 
 model ArtisanReview {
   id         Int      @id @default(autoincrement())
   artisanId  Int
   customerId Int
+  /// When set, ties this review to a completed order (at most one per order).
+  orderId    Int?     @unique
   rating     Int
   comment    String?
   createdAt  DateTime @default(now())
@@ -871,9 +879,11 @@ model ArtisanReview {
 
   artisan  ArtisanProfile @relation(fields: [artisanId], references: [userId], onDelete: Cascade)
   customer User           @relation("CustomerReviews", fields: [customerId], references: [id], onDelete: Cascade)
+  order    Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@unique([customerId, artisanId])
   @@index([artisanId])
+  @@index([orderId])
 }
 
 model Conversation {

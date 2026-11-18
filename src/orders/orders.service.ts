@@ -64,6 +64,8 @@ type Order = {
   artisanName: string | null;
   readiness?: ReturnType<OrderReadinessService['readinessSummary']>;
   production?: ReturnType<ArtisanPayoutService['payoutSummaryForOrder']>;
+  customerRating?: number | null;
+  customerReview?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -209,6 +211,8 @@ export class OrdersService {
     productionDurationDays?: number | null;
     qualityReviewStatus?: string | null;
     fulfillmentStatus?: string | null;
+    customerRating?: number | null;
+    customerReview?: string | null;
     artisanPayout?: {
       status: string;
       fundingRequired: boolean;
@@ -264,8 +268,12 @@ export class OrdersService {
         productionDurationDays: dbOrder.productionDurationDays ?? null,
         qualityReviewStatus: dbOrder.qualityReviewStatus ?? null,
         fulfillmentStatus: dbOrder.fulfillmentStatus ?? null,
+        customerRating: dbOrder.customerRating ?? null,
+        customerReview: dbOrder.customerReview ?? null,
         artisanPayout: dbOrder.artisanPayout ?? null,
       }),
+      customerRating: dbOrder.customerRating ?? null,
+      customerReview: dbOrder.customerReview ?? null,
       createdAt: dbOrder.createdAt.toISOString(),
       updatedAt: dbOrder.updatedAt.toISOString(),
     };

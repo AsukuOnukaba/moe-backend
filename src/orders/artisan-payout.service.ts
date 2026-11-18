@@ -331,6 +331,8 @@ export class ArtisanPayoutService {
     productionDurationDays: number | null;
     qualityReviewStatus?: string | null;
     fulfillmentStatus?: string | null;
+    customerRating?: number | null;
+    customerReview?: string | null;
     artisanPayout?: {
       status: string;
       fundingRequired: boolean;
@@ -381,6 +383,8 @@ export class ArtisanPayoutService {
       overdue: deadlineMs != null ? deadlineMs <= now : false,
       qualityReviewStatus: order.qualityReviewStatus ?? null,
       fulfillmentStatus: order.fulfillmentStatus ?? null,
+      customerRating: order.customerRating ?? null,
+      customerReview: order.customerReview ?? null,
       awaitingInitialPayout:
         order.readinessWorkflowStatus === 'approved' &&
         !fundingOk &&
@@ -1371,7 +1375,8 @@ export class ArtisanPayoutService {
     );
 
     try {
-      const result = await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(
+        async (tx) => {
         if (order.status === 'pending') {
           await tx.order.update({
             where: { id: orderId },
@@ -1463,7 +1468,9 @@ export class ArtisanPayoutService {
           productionDeadline: deadline,
           status: 'in_progress',
         };
-      });
+        },
+        { maxWait: 10_000, timeout: 20_000 },
+      );
 
       if (!result.alreadyStarted) {
         await this.notifications.notifyProductionStarted(

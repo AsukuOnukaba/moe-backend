@@ -420,14 +420,17 @@ export class OrderQualityService {
       data.status = 'shipped';
     }
     if (status === 'delivered') {
-      data.deliveredAt = new Date();
+      // Deadline is calculated from the verified delivery timestamp, not page load.
+      const deliveredAt = new Date();
+      data.deliveredAt = deliveredAt;
       data.status = 'delivered';
       const hours = this.customerReviewHours();
       if (hours != null) {
         data.customerReviewDeadline = new Date(
-          Date.now() + hours * 60 * 60 * 1000,
+          deliveredAt.getTime() + hours * 60 * 60 * 1000,
         );
       }
+      // Unset config → no auto deadline / no auto payout action.
     }
 
     await this.prisma.order.update({ where: { id: orderId }, data });
@@ -490,14 +493,16 @@ export class OrderQualityService {
       });
     }
 
+    const reviewText = body.review?.trim() || null;
     await this.prisma.order.update({
       where: { id: orderId },
       data: {
         fulfillmentStatus: 'customer_accepted',
         customerAcceptedAt: new Date(),
         customerRating: rating,
-        customerReview: body.review?.trim() || null,
+        customerReview: reviewText,
         finalPayoutReviewEligible: true,
+        // Acceptance never marks artisan payout as paid.
       },
     });
     await this.prisma.orderDeliveryEvent.create({
@@ -505,10 +510,179 @@ export class OrderQualityService {
         orderId,
         actorId: user.sub,
         action: 'customer_accepted',
-        detail: { rating, review: body.review?.trim() || null },
+        detail: { rating, review: reviewText, payoutAutoReleased: false },
       },
     });
+
+    if (rating != null) {
+      await this.syncOrderLinkedReviews(order, rating, reviewText, false);
+    }
+
     return { orderId, fulfillmentStatus: 'customer_accepted' };
+  }
+
+  /**
+   * Rate / review after acceptance. Links ProductReview + ArtisanReview to the order.
+   * Does not create a second product review row for the same order.
+   */
+  async submitOrderReview(
+    user: AccessTokenPayload,
+    orderId: number,
+    body: { rating: number; review?: string },
+    opts: { allowUpdate?: boolean } = {},
+  ) {
+    if (user.role !== 'customer') {
+      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order || order.customerId !== user.sub) {
+      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    if (order.fulfillmentStatus !== 'customer_accepted') {
+      throw new BadRequestException({
+        message: 'Confirm delivery before rating this order',
+        code: 'ACCEPTANCE_REQUIRED',
+      });
+    }
+    const rating = Number(body.rating);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      throw new BadRequestException({
+        message: 'rating must be 1-5',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+    const reviewText =
+      typeof body.review === 'string' && body.review.trim()
+        ? body.review.trim().slice(0, 500)
+        : null;
+
+    if (order.customerRating != null && !opts.allowUpdate) {
+      throw new BadRequestException({
+        message: 'This order already has a review. Use PATCH to edit.',
+        code: 'DUPLICATE_ORDER_REVIEW',
+      });
+    }
+    if (order.customerRating == null && opts.allowUpdate) {
+      throw new BadRequestException({
+        message: 'No existing review to update',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        customerRating: Math.round(rating),
+        customerReview: reviewText,
+      },
+    });
+    await this.syncOrderLinkedReviews(
+      order,
+      Math.round(rating),
+      reviewText,
+      !!opts.allowUpdate,
+    );
+    await this.prisma.orderDeliveryEvent.create({
+      data: {
+        orderId,
+        actorId: user.sub,
+        action: opts.allowUpdate ? 'review_updated' : 'review_submitted',
+        detail: { rating: Math.round(rating), review: reviewText },
+      },
+    });
+
+    return {
+      orderId,
+      rating: Math.round(rating),
+      review: reviewText,
+      productId: order.productId,
+      artisanId: order.providerId,
+    };
+  }
+
+  private async syncOrderLinkedReviews(
+    order: {
+      id: number;
+      productId: number;
+      providerId: number | null;
+      customerId: number;
+    },
+    rating: number,
+    reviewText: string | null,
+    isUpdate: boolean,
+  ) {
+    const existingByOrder = await this.prisma.productReview.findUnique({
+      where: { orderId: order.id },
+    });
+    if (existingByOrder && !isUpdate) {
+      return; // already linked — do not duplicate
+    }
+
+    await this.prisma.productReview.upsert({
+      where: {
+        customerId_productId: {
+          customerId: order.customerId,
+          productId: order.productId,
+        },
+      },
+      create: {
+        productId: order.productId,
+        customerId: order.customerId,
+        orderId: order.id,
+        rating,
+        review: reviewText,
+        status: 'approved',
+      },
+      update: {
+        rating,
+        review: reviewText,
+        orderId: order.id,
+      },
+    });
+
+    if (order.providerId) {
+      await this.prisma.artisanReview.upsert({
+        where: {
+          customerId_artisanId: {
+            customerId: order.customerId,
+            artisanId: order.providerId,
+          },
+        },
+        create: {
+          artisanId: order.providerId,
+          customerId: order.customerId,
+          orderId: order.id,
+          rating,
+          comment: reviewText,
+        },
+        update: {
+          rating,
+          comment: reviewText,
+          orderId: order.id,
+        },
+      });
+
+      // Preserve existing artisan aggregate calculation from product reviews.
+      const products = await this.prisma.product.findMany({
+        where: { providerId: order.providerId },
+        select: { id: true },
+      });
+      const agg = await this.prisma.productReview.aggregate({
+        where: {
+          productId: { in: products.map((p) => p.id) },
+          status: 'approved',
+        },
+        _avg: { rating: true },
+        _count: { id: true },
+      });
+      await this.prisma.artisanProfile.update({
+        where: { userId: order.providerId },
+        data: {
+          rating: agg._avg.rating ?? 0,
+          reviewCount: agg._count.id,
+        },
+      });
+    }
   }
 
   async customerDispute(
@@ -588,9 +762,12 @@ export class OrderQualityService {
     let escalated = 0;
     for (const order of due) {
       const hasOpenDispute = order.disputes.length > 0;
-      const deliveryEvidenced = order.deliveryEvents.some((e) =>
-        ['delivered', 'dispatched'].includes(e.action),
-      );
+      const deliveryEvidenced =
+        !!order.deliveredAt ||
+        order.deliveryEvents.some((e) =>
+          ['delivered', 'dispatched'].includes(e.action),
+        );
+      // Never auto-transfer money — only eligibility / escalation flags.
       if (!hasOpenDispute && deliveryEvidenced) {
         await this.prisma.order.update({
           where: { id: order.id },
@@ -600,7 +777,12 @@ export class OrderQualityService {
           data: {
             orderId: order.id,
             action: 'final_payout_eligible',
-            detail: { reason: 'review_window_elapsed_no_dispute' },
+            detail: {
+              reason: 'review_window_elapsed_no_dispute',
+              payoutAutoReleased: false,
+              basedOnDeliveredAt: order.deliveredAt?.toISOString() ?? null,
+              reviewDeadline: order.customerReviewDeadline?.toISOString() ?? null,
+            },
           },
         });
         eligible += 1;
@@ -617,6 +799,7 @@ export class OrderQualityService {
               reason: hasOpenDispute
                 ? 'open_dispute'
                 : 'missing_delivery_evidence',
+              payoutAutoReleased: false,
             },
           },
         });

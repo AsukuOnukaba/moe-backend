@@ -121,6 +121,36 @@ export class OrderQualityController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('orders/:id/review')
+  submitReview(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { rating: number; review?: string },
+  ) {
+    return this.quality.submitOrderReview(
+      req.user as AccessTokenPayload,
+      Number(id),
+      body,
+      { allowUpdate: false },
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('orders/:id/review/update')
+  updateReview(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { rating: number; review?: string },
+  ) {
+    return this.quality.submitOrderReview(
+      req.user as AccessTokenPayload,
+      Number(id),
+      body,
+      { allowUpdate: true },
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('orders/:id/delivery/dispute')
   dispute(
     @Req() req: Request,

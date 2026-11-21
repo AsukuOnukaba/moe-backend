@@ -17,6 +17,7 @@ import { Type } from 'class-transformer';
 import { PRODUCT_CATEGORIES } from '../../common/product-categories';
 import { ValidatePriceRange } from '../../common/validators/price-range.validator';
 import { VariationTypeInputDto } from './product-variation.dto';
+import { PRODUCT_AUDIENCES } from '../../products/product-audience';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -66,6 +67,11 @@ export class CreateArtisanProductDto {
     message: `category must be one of: ${PRODUCT_CATEGORIES.join(', ')}`,
   })
   category?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsIn([...PRODUCT_AUDIENCES], { each: true })
+  designedFor?: string[];
 
   @IsOptional()
   @IsString()

@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { PRODUCT_CATEGORIES } from '../../common/product-categories';
 import { VariationTypeInputDto } from '../../artisans/dto/product-variation.dto';
+import { PRODUCT_AUDIENCES } from '../../products/product-audience';
 
 export class CreateAdminProductDto {
   @IsInt()
@@ -31,6 +32,11 @@ export class CreateAdminProductDto {
   @IsString()
   @IsIn([...PRODUCT_CATEGORIES])
   category?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsIn([...PRODUCT_AUDIENCES], { each: true })
+  designedFor?: string[];
 
   @IsOptional()
   @IsNumber()

@@ -14,6 +14,12 @@ import { toStringList } from '../common/string-list';
 import { ProductVariationsService } from '../artisans/product-variations.service';
 import type { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import type { CreateAdminProductDto } from './dto/create-admin-product.dto';
+import {
+  AUDIENCE_REQUIRED_CATEGORIES,
+  inferAudienceSuggestion,
+  normalizeProductAudiences,
+  requiresAudienceClassification,
+} from '../products/product-audience';
 
 @Injectable()
 export class AdminService {
@@ -341,14 +347,25 @@ export class AdminService {
       });
     }
 
-    const price =
-      dto.priceMin ?? dto.price ?? 0;
+    const price = dto.priceMin ?? dto.price ?? 0;
+    const category = dto.category ? normalizeProductCategory(dto.category) : null;
+    const designedFor = normalizeProductAudiences(dto.designedFor);
+    if (requiresAudienceClassification(category) && designedFor.length === 0) {
+      throw new BadRequestException({
+        message: 'Designed For is required for clothing and footwear products',
+        code: 'PRODUCT_AUDIENCE_REQUIRED',
+      });
+    }
 
     const created = await this.prisma.product.create({
       data: {
         name: dto.name.trim(),
         description: dto.description?.trim() ?? null,
-        category: dto.category ? normalizeProductCategory(dto.category) : null,
+        category,
+        designedFor,
+        audienceClassificationStatus:
+          designedFor.length > 0 ? 'classified' : 'unclassified',
+        audienceClassifiedAt: designedFor.length > 0 ? new Date() : null,
         price,
         originalPrice: dto.priceMax ?? null,
         currency: dto.currency ?? 'NGN',
@@ -653,6 +670,7 @@ export class AdminService {
       sort?: string;
       createdFrom?: string;
       createdTo?: string;
+      audienceStatus?: string;
     },
   ) {
     const skip = (page - 1) * pageSize;
@@ -662,6 +680,12 @@ export class AdminService {
       ? { status, ...activeProductWhere }
       : { ...activeProductWhere };
     if (category) where.category = category;
+    if (extras?.audienceStatus === 'needs_review') {
+      where.designedFor = { isEmpty: true };
+      where.category = { in: [...AUDIENCE_REQUIRED_CATEGORIES] };
+    } else if (extras?.audienceStatus === 'classified') {
+      where.designedFor = { isEmpty: false };
+    }
     const createdAt = createdAtRange(extras?.createdFrom, extras?.createdTo);
     if (createdAt) where.createdAt = createdAt;
     if (q.length >= 1) {
@@ -718,6 +742,17 @@ export class AdminService {
           p.provider?.name ||
           null,
         providerId: p.providerId,
+        designedFor: p.designedFor,
+        audienceClassificationStatus:
+          p.designedFor.length > 0
+            ? 'classified'
+            : inferAudienceSuggestion(p).length > 0
+              ? 'suggested'
+              : requiresAudienceClassification(p.category)
+                ? 'uncertain'
+                : 'not_applicable',
+        audienceSuggestion:
+          p.designedFor.length > 0 ? [] : inferAudienceSuggestion(p),
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
       })),
@@ -738,7 +773,68 @@ export class AdminService {
     if (!product) {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
     }
-    return productToDto(product);
+    return {
+      ...productToDto(product),
+      audienceSuggestion:
+        product.designedFor.length > 0 ? [] : inferAudienceSuggestion(product),
+      audienceRequiresReview:
+        product.designedFor.length === 0 &&
+        requiresAudienceClassification(product.category),
+    };
+  }
+
+  async updateProductAudience(
+    id: number,
+    designedForInput: string[],
+    adminUserId: number,
+  ) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, ...activeProductWhere },
+    });
+    if (!product) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+    const designedFor = normalizeProductAudiences(designedForInput);
+    if (requiresAudienceClassification(product.category) && designedFor.length === 0) {
+      throw new BadRequestException({
+        message: 'Select at least one audience for this product',
+        code: 'PRODUCT_AUDIENCE_REQUIRED',
+      });
+    }
+    const updated = await this.prisma.product.update({
+      where: { id },
+      data: {
+        designedFor,
+        audienceClassificationStatus:
+          designedFor.length > 0 ? 'classified' : 'unclassified',
+        audienceClassifiedAt: designedFor.length > 0 ? new Date() : null,
+        audienceClassifiedById:
+          designedFor.length > 0 ? adminUserId : null,
+      },
+    });
+    await this.prisma.adminAuditLog.create({
+      data: {
+        action: 'product_audience_classified',
+        adminUserId,
+        targetType: 'product',
+        targetId: id,
+        metadata: { designedFor },
+      },
+    });
+    return productToDto(updated);
+  }
+
+  async bulkUpdateProductAudience(
+    items: Array<{ id: number; designedFor: string[] }>,
+    adminUserId: number,
+  ) {
+    const results: unknown[] = [];
+    for (const item of items) {
+      results.push(
+        await this.updateProductAudience(item.id, item.designedFor, adminUserId),
+      );
+    }
+    return { updated: results.length, data: results };
   }
 
   async patchProductStatus(

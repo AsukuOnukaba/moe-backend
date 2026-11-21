@@ -12,6 +12,12 @@ import {
 } from '../common/product-mapper';
 import { EventsService } from '../events/events.service';
 import { getCustomisationTemplate } from './product-customisation.templates';
+import {
+  audienceWhere,
+  parseAudienceSearch,
+  PRODUCT_AUDIENCES,
+  type ProductAudience,
+} from './product-audience';
 
 type Pagination = {
   page: number;
@@ -40,9 +46,21 @@ export class ProductsService {
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
     const skip = (page - 1) * pageSize;
 
-    const q = typeof query?.q === 'string' ? query.q.trim() : '';
+    const rawQuery = typeof query?.q === 'string' ? query.q.trim() : '';
+    const searchIntent = parseAudienceSearch(rawQuery);
+    const requestedAudience =
+      typeof query?.audience === 'string'
+        ? query.audience.trim().toLowerCase()
+        : '';
+    const audience = (
+      (PRODUCT_AUDIENCES as readonly string[]).includes(requestedAudience)
+        ? requestedAudience
+        : searchIntent.audience
+    ) as ProductAudience | undefined;
+    const q = searchIntent.remainingQuery;
     const category =
       typeof query?.category === 'string' ? query.category : undefined;
+    const effectiveCategory = category || searchIntent.category;
     const categories =
       typeof query?.categories === 'string'
         ? query.categories
@@ -95,7 +113,7 @@ export class ProductsService {
           : [];
 
     const where: any = { status: APPROVED_STATUS, ...activeProductWhere };
-    if (category) where.category = category;
+    if (effectiveCategory) where.category = effectiveCategory;
     if (featured !== undefined) where.featured = featured;
     if (isBestSeller !== undefined) where.isBestSeller = isBestSeller;
     if (isTrending !== undefined) where.isTrending = isTrending;
@@ -114,6 +132,7 @@ export class ProductsService {
           ? query.styleTags.map((s: string) => String(s).trim()).filter(Boolean)
           : [];
     const andFilters: any[] = [];
+    if (audience) andFilters.push(audienceWhere(audience));
     if (categories.length > 1) {
       andFilters.push({
         OR: categories.map((value: string) => ({

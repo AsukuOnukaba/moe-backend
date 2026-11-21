@@ -29,6 +29,8 @@ import { BulkDeleteCategoriesDto } from './dto/bulk-delete-categories.dto';
 import { BulkDeleteConversationsDto } from './dto/bulk-delete-conversations.dto';
 import { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import { CreateAdminProductDto } from './dto/create-admin-product.dto';
+import { UpdateProductAudienceDto } from './dto/update-product-audience.dto';
+import { BulkUpdateProductAudienceDto } from './dto/bulk-update-product-audience.dto';
 import { CustomOrdersService } from '../custom-orders/custom-orders.service';
 import {
   cloudinaryUrl,
@@ -182,13 +184,33 @@ export class AdminController {
     @Query('sort') sort?: string,
     @Query('createdFrom') createdFrom?: string,
     @Query('createdTo') createdTo?: string,
+    @Query('audienceStatus') audienceStatus?: string,
   ) {
     return this.admin.listProducts(
       Math.max(1, Number(page ?? 1)),
       Math.max(1, Math.min(100, Number(pageSize ?? 20))),
       status,
-      { q, category, sort, createdFrom, createdTo },
+      { q, category, sort, createdFrom, createdTo, audienceStatus },
     );
+  }
+
+  @Patch('products/:id/audience')
+  updateProductAudience(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateProductAudienceDto,
+  ) {
+    const user = req.user as AccessTokenPayload;
+    return this.admin.updateProductAudience(id, body.designedFor, user.sub);
+  }
+
+  @Post('products/classification/bulk-approve')
+  bulkUpdateProductAudience(
+    @Req() req: Request,
+    @Body() body: BulkUpdateProductAudienceDto,
+  ) {
+    const user = req.user as AccessTokenPayload;
+    return this.admin.bulkUpdateProductAudience(body.items, user.sub);
   }
 
   @Get('products/:id')

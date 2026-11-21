@@ -184,6 +184,11 @@ model Product {
   status                String   @default("pending")
   rejectionReason       String?
   customisationRequired Boolean  @default(false)
+  /// Structured storefront audiences. Existing products remain discoverable with an empty list.
+  designedFor                  String[] @default([])
+  audienceClassificationStatus String   @default("unclassified")
+  audienceClassifiedAt          DateTime?
+  audienceClassifiedById        Int?
 
   providerId Int?
   provider   User? @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -218,6 +223,7 @@ model Product {
   @@index([artisanId])
   @@index([artisanId, status])
   @@index([category])
+  @@index([audienceClassificationStatus])
   @@index([status])
   @@index([deletedAt])
   @@index([createdAt])

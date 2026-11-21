@@ -62,6 +62,8 @@ export function productToDto(p: {
   discountPercent?: number | null;
   status?: string | null;
   customisationRequired?: boolean | null;
+  designedFor?: string[] | null;
+  audienceClassificationStatus?: string | null;
   stockCount?: number | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
@@ -98,6 +100,9 @@ export function productToDto(p: {
     originalPrice: p.originalPrice ?? null,
     status: p.status ?? null,
     customisationRequired: p.customisationRequired ?? false,
+    designedFor: Array.isArray(p.designedFor) ? p.designedFor : [],
+    audienceClassificationStatus:
+      p.audienceClassificationStatus ?? 'unclassified',
     stockCount: p.stockCount ?? null,
     metaTitle: p.metaTitle ?? null,
     metaDescription: p.metaDescription ?? null,
@@ -135,4 +140,3 @@ export function productToDto(p: {
       : {}),
   };
 }
-

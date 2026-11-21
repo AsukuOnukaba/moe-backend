@@ -18,6 +18,10 @@ import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service
 import { toStringList } from '../common/string-list';
 import { KeywordsService } from '../keywords/keywords.service';
 import { ARTISAN_ORDER_VIEWS } from '../orders/artisan-order-views';
+import {
+  normalizeProductAudiences,
+  requiresAudienceClassification,
+} from '../products/product-audience';
 
 function asArrayFromComma(value: string | string[] | null | undefined): string[] {
   return toStringList(value);
@@ -257,6 +261,14 @@ export class ArtisansService {
 
   async createProduct(user: AccessTokenPayload, dto: CreateArtisanProductDto) {
     const userId = this.requireArtisan(user);
+    const category = dto.category ? normalizeProductCategory(dto.category) : null;
+    const designedFor = normalizeProductAudiences(dto.designedFor);
+    if (requiresAudienceClassification(category) && designedFor.length === 0) {
+      throw new BadRequestException({
+        message: 'Designed For is required for clothing and footwear products',
+        code: 'PRODUCT_AUDIENCE_REQUIRED',
+      });
+    }
 
     const created = await this.prisma.product.create({
       data: {
@@ -267,7 +279,12 @@ export class ArtisansService {
         originalPrice: dto.priceMax ?? dto.originalPrice ?? null,
         currency: dto.currency ?? 'NGN',
         images: dto.images ?? [],
-        category: dto.category ? normalizeProductCategory(dto.category) : null,
+        category,
+        designedFor,
+        audienceClassificationStatus:
+          designedFor.length > 0 ? 'classified' : 'unclassified',
+        audienceClassifiedAt: designedFor.length > 0 ? new Date() : null,
+        audienceClassifiedById: designedFor.length > 0 ? userId : null,
         materials: dto.materials ?? null,
         tags: dto.tags ?? null,
         featured: dto.featured ?? false,
@@ -314,6 +331,22 @@ export class ArtisansService {
         code: 'RESOURCE_NOT_FOUND',
       });
     }
+    const category =
+      dto.category !== undefined
+        ? dto.category
+          ? normalizeProductCategory(dto.category)
+          : null
+        : existing.category;
+    const designedFor =
+      dto.designedFor !== undefined
+        ? normalizeProductAudiences(dto.designedFor)
+        : existing.designedFor;
+    if (requiresAudienceClassification(category) && designedFor.length === 0) {
+      throw new BadRequestException({
+        message: 'Designed For is required for clothing and footwear products',
+        code: 'PRODUCT_AUDIENCE_REQUIRED',
+      });
+    }
 
     const updated = await this.prisma.product.update({
       where: { id: productId },
@@ -341,6 +374,17 @@ export class ArtisansService {
               category: dto.category
                 ? normalizeProductCategory(dto.category)
                 : null,
+            }
+          : {}),
+        ...(dto.designedFor !== undefined
+          ? {
+              designedFor,
+              audienceClassificationStatus:
+                designedFor.length > 0 ? 'classified' : 'unclassified',
+              audienceClassifiedAt:
+                designedFor.length > 0 ? new Date() : null,
+              audienceClassifiedById:
+                designedFor.length > 0 ? userId : null,
             }
           : {}),
         ...(dto.materials !== undefined ? { materials: dto.materials } : {}),

@@ -120,7 +120,10 @@ export class OrderMilestoneService {
       exceptionReason?: string;
     },
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_amount_approve');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_amount_approve',
+    );
     if (
       typeof body.totalPayableAmount !== 'number' ||
       body.totalPayableAmount < 0
@@ -203,17 +206,17 @@ export class OrderMilestoneService {
       exceptionReason?: string;
     },
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_amount_approve');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_amount_approve',
+    );
     if (!body.name?.trim()) {
       throw new BadRequestException({
         message: 'name is required',
         code: 'VALIDATION_ERROR',
       });
     }
-    if (
-      typeof body.approvedAmount !== 'number' ||
-      body.approvedAmount < 0
-    ) {
+    if (typeof body.approvedAmount !== 'number' || body.approvedAmount < 0) {
       throw new BadRequestException({
         message: 'approvedAmount must be non-negative',
         code: 'VALIDATION_ERROR',
@@ -226,7 +229,8 @@ export class OrderMilestoneService {
     });
     if (!payout) {
       throw new NotFoundException({
-        message: 'Artisan payout record missing — approve readiness/initial first',
+        message:
+          'Artisan payout record missing — approve readiness/initial first',
         code: 'RESOURCE_NOT_FOUND',
       });
     }
@@ -295,7 +299,10 @@ export class OrderMilestoneService {
     orderId: number,
     milestoneId: number,
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_amount_approve');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_amount_approve',
+    );
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { artisanPayout: { include: { milestones: true } } },
@@ -359,7 +366,10 @@ export class OrderMilestoneService {
     },
     files: Express.Multer.File[] = [],
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_transfer_record');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_transfer_record',
+    );
     const payout = await this.prisma.orderArtisanPayout.findUnique({
       where: { orderId },
       include: {
@@ -381,7 +391,8 @@ export class OrderMilestoneService {
     }
     if (['disputed', 'reversed'].includes(payout.status)) {
       throw new BadRequestException({
-        message: 'Transfers are blocked while the artisan payout is disputed or reversed',
+        message:
+          'Transfers are blocked while the artisan payout is disputed or reversed',
         code: 'PAYOUT_RELEASE_BLOCKED',
       });
     }
@@ -391,12 +402,17 @@ export class OrderMilestoneService {
       });
       if (openDisputes > 0) {
         throw new BadRequestException({
-          message: 'Final transfer is blocked while an order dispute remains open',
+          message:
+            'Final transfer is blocked while an order dispute remains open',
           code: 'PAYOUT_RELEASE_BLOCKED',
         });
       }
     }
-    if (!['eligible', 'amount_approved', 'recorded', 'verified'].includes(milestone.status)) {
+    if (
+      !['eligible', 'amount_approved', 'recorded', 'verified'].includes(
+        milestone.status,
+      )
+    ) {
       throw new BadRequestException({
         message: `Milestone status "${milestone.status}" cannot receive transfers`,
         code: 'VALIDATION_ERROR',
@@ -413,6 +429,15 @@ export class OrderMilestoneService {
         code: 'VALIDATION_ERROR',
       });
     }
+    if (
+      payout.isSimulated &&
+      !body.externalReference.trim().startsWith('SIM-')
+    ) {
+      throw new BadRequestException({
+        message: 'Simulated payouts require a SIM- reference',
+        code: 'VALIDATION_ERROR',
+      });
+    }
 
     const currency = (body.currency || milestone.currency).toUpperCase();
     try {
@@ -426,6 +451,7 @@ export class OrderMilestoneService {
           payeeName: body.payeeName.trim(),
           payeeDetails: body.payeeDetails?.trim() || null,
           externalReference: body.externalReference.trim(),
+          isSimulated: payout.isSimulated,
           status: 'recorded',
           recordedById: admin.sub,
           evidence: {
@@ -448,8 +474,7 @@ export class OrderMilestoneService {
       await this.prisma.orderArtisanPayoutMilestone.update({
         where: { id: milestoneId },
         data: {
-          status:
-            milestone.status === 'verified' ? 'verified' : 'recorded',
+          status: milestone.status === 'verified' ? 'verified' : 'recorded',
         },
       });
       await this.prisma.orderArtisanPayoutEvent.create({
@@ -486,7 +511,10 @@ export class OrderMilestoneService {
     transferId: number,
     body: { notes: string },
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_transfer_verify');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_transfer_verify',
+    );
     if (!body.notes?.trim()) {
       throw new BadRequestException({
         message: 'verification notes required',
@@ -509,7 +537,8 @@ export class OrderMilestoneService {
     }
     if (['disputed', 'reversed'].includes(transfer.payout.status)) {
       throw new BadRequestException({
-        message: 'Transfer verification is blocked while the artisan payout is disputed or reversed',
+        message:
+          'Transfer verification is blocked while the artisan payout is disputed or reversed',
         code: 'PAYOUT_RELEASE_BLOCKED',
       });
     }
@@ -519,7 +548,8 @@ export class OrderMilestoneService {
       });
       if (openDisputes > 0) {
         throw new BadRequestException({
-          message: 'Final transfer verification is blocked while an order dispute remains open',
+          message:
+            'Final transfer verification is blocked while an order dispute remains open',
           code: 'PAYOUT_RELEASE_BLOCKED',
         });
       }

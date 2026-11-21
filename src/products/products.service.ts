@@ -1,8 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { activeProductWhere } from '../common/active-product';
-import { catalogueProviderFilter, uniqueIds } from '../common/canonical-storefronts';
+import {
+  catalogueProviderFilter,
+  uniqueIds,
+} from '../common/canonical-storefronts';
 import { PrismaService } from '../database/prisma.service';
-import { artisanDisplayName, productArtisanInclude, productToDto } from '../common/product-mapper';
+import {
+  artisanDisplayName,
+  productArtisanInclude,
+  productToDto,
+} from '../common/product-mapper';
 import { EventsService } from '../events/events.service';
 import { getCustomisationTemplate } from './product-customisation.templates';
 
@@ -34,21 +41,33 @@ export class ProductsService {
     const skip = (page - 1) * pageSize;
 
     const q = typeof query?.q === 'string' ? query.q.trim() : '';
-    const category = typeof query?.category === 'string' ? query.category : undefined;
+    const category =
+      typeof query?.category === 'string' ? query.category : undefined;
     const categories =
       typeof query?.categories === 'string'
-        ? query.categories.split(',').map((s: string) => s.trim()).filter(Boolean)
+        ? query.categories
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
         : [];
     const featured =
-      query?.featured === 'true' ? true : query?.featured === 'false' ? false : undefined;
+      query?.featured === 'true'
+        ? true
+        : query?.featured === 'false'
+          ? false
+          : undefined;
 
     // Accept both minPrice/maxPrice (preferred) and legacy priceMin/priceMax.
     const minPriceRaw = query?.minPrice ?? query?.priceMin;
     const maxPriceRaw = query?.maxPrice ?? query?.priceMax;
     const minPrice =
-      minPriceRaw !== undefined && minPriceRaw !== '' ? Number(minPriceRaw) : undefined;
+      minPriceRaw !== undefined && minPriceRaw !== ''
+        ? Number(minPriceRaw)
+        : undefined;
     const maxPrice =
-      maxPriceRaw !== undefined && maxPriceRaw !== '' ? Number(maxPriceRaw) : undefined;
+      maxPriceRaw !== undefined && maxPriceRaw !== ''
+        ? Number(maxPriceRaw)
+        : undefined;
     const country =
       typeof query?.country === 'string' && query.country.trim()
         ? query.country.trim()
@@ -67,7 +86,10 @@ export class ProductsService {
         : undefined;
     const materials =
       typeof query?.materials === 'string'
-        ? query.materials.split(',').map((s: string) => s.trim()).filter(Boolean)
+        ? query.materials
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
         : Array.isArray(query?.materials)
           ? query.materials.map((s: string) => String(s).trim()).filter(Boolean)
           : [];
@@ -84,7 +106,10 @@ export class ProductsService {
 
     const styleTags =
       typeof query?.styleTags === 'string'
-        ? query.styleTags.split(',').map((s: string) => s.trim()).filter(Boolean)
+        ? query.styleTags
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
         : Array.isArray(query?.styleTags)
           ? query.styleTags.map((s: string) => String(s).trim()).filter(Boolean)
           : [];
@@ -117,8 +142,10 @@ export class ProductsService {
       (maxPrice !== undefined && Number.isFinite(maxPrice))
     ) {
       where.price = {};
-      if (minPrice !== undefined && Number.isFinite(minPrice)) where.price.gte = minPrice;
-      if (maxPrice !== undefined && Number.isFinite(maxPrice)) where.price.lte = maxPrice;
+      if (minPrice !== undefined && Number.isFinite(minPrice))
+        where.price.gte = minPrice;
+      if (maxPrice !== undefined && Number.isFinite(maxPrice))
+        where.price.lte = maxPrice;
     }
 
     if (country || state) {
@@ -147,13 +174,24 @@ export class ProductsService {
     const sortKey = typeof query?.sort === 'string' ? query.sort : '';
     const collection =
       typeof query?.collection === 'string' ? query.collection.trim() : '';
-    const nameDirection = sortKey === 'name_desc' ? -1 : sortKey === 'price_asc' || sortKey === 'price_desc' || sortKey === 'newest' || sortKey === 'bestSeller' || sortKey === 'trending' ? 0 : 1;
+    const nameDirection =
+      sortKey === 'name_desc'
+        ? -1
+        : sortKey === 'price_asc' ||
+            sortKey === 'price_desc' ||
+            sortKey === 'newest' ||
+            sortKey === 'bestSeller' ||
+            sortKey === 'trending'
+          ? 0
+          : 1;
 
     let totalItems: number;
     let items: Awaited<ReturnType<PrismaService['product']['findMany']>>;
     let orderCounts: Map<number, number> | null = null;
     if (collection === 'deals' || collection === 'styles') {
-      const rankedIds = uniqueIds(await this.rankHomepageShelf(where, query, collection));
+      const rankedIds = uniqueIds(
+        await this.rankHomepageShelf(where, query, collection),
+      );
       totalItems = rankedIds.length;
       const pageIds = rankedIds.slice(skip, skip + pageSize);
       const pageRows = pageIds.length
@@ -163,7 +201,9 @@ export class ProductsService {
           })
         : [];
       const byId = new Map(pageRows.map((row) => [row.id, row]));
-      items = pageIds.map((id) => byId.get(id)).filter((row) => row !== undefined);
+      items = pageIds
+        .map((id) => byId.get(id))
+        .filter((row) => row !== undefined);
     } else if (collection === 'best-sellers' || sortKey === 'bestSeller') {
       const ranked = await this.rankBestSellers(where, sortKey);
       orderCounts = ranked.counts;
@@ -177,7 +217,9 @@ export class ProductsService {
           })
         : [];
       const byId = new Map(pageRows.map((row) => [row.id, row]));
-      items = pageIds.map((id) => byId.get(id)).filter((row) => row !== undefined);
+      items = pageIds
+        .map((id) => byId.get(id))
+        .filter((row) => row !== undefined);
     } else if (nameDirection !== 0) {
       const rows = await this.prisma.product.findMany({
         where,
@@ -185,7 +227,8 @@ export class ProductsService {
       });
       rows.sort(
         (a, b) =>
-          nameDirection * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
+          nameDirection *
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
           a.id - b.id,
       );
       const orderedIds = uniqueIds(rows.map((row) => row.id));
@@ -198,7 +241,9 @@ export class ProductsService {
           })
         : [];
       const byId = new Map(pageRows.map((row) => [row.id, row]));
-      items = pageIds.map((id) => byId.get(id)).filter((row) => row !== undefined);
+      items = pageIds
+        .map((id) => byId.get(id))
+        .filter((row) => row !== undefined);
     } else {
       [totalItems, items] = await Promise.all([
         this.prisma.product.count({ where }),
@@ -219,25 +264,29 @@ export class ProductsService {
       data: items.map((item) => ({
         ...productToDto(item),
         artisanName: artisanDisplayName(
-          (item as { provider?: Parameters<typeof artisanDisplayName>[0] }).provider,
+          (item as { provider?: Parameters<typeof artisanDisplayName>[0] })
+            .provider,
         ),
         createdAt:
-          item.createdAt instanceof Date ? item.createdAt.toISOString() : undefined,
-        ...(orderCounts
-          ? { orderCount: orderCounts.get(item.id) ?? 0 }
-          : {}),
+          item.createdAt instanceof Date
+            ? item.createdAt.toISOString()
+            : undefined,
+        ...(orderCounts ? { orderCount: orderCounts.get(item.id) ?? 0 } : {}),
       })),
       pagination,
     };
   }
 
   /**
-   * Best Sellers: a product marked isBestSeller, or one with at least one
-   * order that is not cancelled or rejected. Ranked by that order count.
-   * The flag alone is not required, and products are not invented to fill
-   * the list.
+   * Best Sellers uses one rule for the homepage and full collection:
+   * publicly eligible admin pins first (in curated order), followed by
+   * products explicitly flagged or backed by non-cancelled/non-rejected
+   * orders. An explicit customer sort reorders that same union.
    */
-  private async rankBestSellers(where: Record<string, unknown>, sortKey: string) {
+  private async rankBestSellers(
+    where: Record<string, unknown>,
+    sortKey: string,
+  ) {
     const scope = { ...where };
     delete scope.isBestSeller;
     const candidates = await this.prisma.product.findMany({
@@ -251,6 +300,20 @@ export class ProductsService {
       },
     });
     const ids = candidates.map((row) => row.id);
+    const section = await this.prisma.curatedSection.findUnique({
+      where: { sectionKey: 'best_sellers' },
+      include: {
+        items: {
+          where: { isActive: true, itemType: 'product' },
+          orderBy: { position: 'asc' },
+        },
+      },
+    });
+    const candidateIds = new Set(ids);
+    const curatedIds = (section?.isActive ? section.items : [])
+      .map((item) => Number(item.itemId))
+      .filter((id) => Number.isInteger(id) && candidateIds.has(id));
+    const curatedPosition = new Map(curatedIds.map((id, index) => [id, index]));
     const grouped = ids.length
       ? await this.prisma.order.groupBy({
           by: ['productId'],
@@ -261,19 +324,37 @@ export class ProductsService {
           _count: { _all: true },
         })
       : [];
-    const counts = new Map(grouped.map((row) => [row.productId, row._count._all]));
-    const ranked = candidates.filter(
-      (row) => row.isBestSeller || (counts.get(row.id) ?? 0) > 0,
+    const counts = new Map(
+      grouped.map((row) => [row.productId, row._count._all]),
     );
-    const byName = (a: { name: string; id: number }, b: { name: string; id: number }) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id - b.id;
+    const ranked = candidates.filter(
+      (row) =>
+        curatedPosition.has(row.id) ||
+        row.isBestSeller ||
+        (counts.get(row.id) ?? 0) > 0,
+    );
+    const byName = (
+      a: { name: string; id: number },
+      b: { name: string; id: number },
+    ) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
+      a.id - b.id;
     ranked.sort((a, b) => {
       if (sortKey === 'name_asc') return byName(a, b);
       if (sortKey === 'name_desc') return byName(b, a);
-      if (sortKey === 'price_asc') return (a.price ?? 0) - (b.price ?? 0) || byName(a, b);
-      if (sortKey === 'price_desc') return (b.price ?? 0) - (a.price ?? 0) || byName(a, b);
+      if (sortKey === 'price_asc')
+        return (a.price ?? 0) - (b.price ?? 0) || byName(a, b);
+      if (sortKey === 'price_desc')
+        return (b.price ?? 0) - (a.price ?? 0) || byName(a, b);
       if (sortKey === 'newest') {
         return b.createdAt.getTime() - a.createdAt.getTime() || byName(a, b);
+      }
+      const aPin = curatedPosition.get(a.id);
+      const bPin = curatedPosition.get(b.id);
+      if (aPin != null || bPin != null) {
+        if (aPin == null) return 1;
+        if (bPin == null) return -1;
+        return aPin - bPin;
       }
       return (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0) || byName(a, b);
     });
@@ -300,11 +381,18 @@ export class ProductsService {
         createdAt: true,
       },
     });
-    const styleTags = new Set(['traditional', 'afrocentric', 'modern', 'elegant']);
+    const styleTags = new Set([
+      'traditional',
+      'afrocentric',
+      'modern',
+      'elegant',
+    ]);
     const matched = rows.filter((row) => {
       if (collection === 'deals') {
         const price = typeof row.price === 'number' ? row.price : 0;
-        return typeof row.originalPrice === 'number' && row.originalPrice > price;
+        return (
+          typeof row.originalPrice === 'number' && row.originalPrice > price
+        );
       }
       const tags = (row.tags ?? '')
         .split(',')
@@ -313,12 +401,18 @@ export class ProductsService {
       return tags.some((tag) => styleTags.has(tag));
     });
     const sortKey = typeof query?.sort === 'string' ? query.sort : '';
-    const byName = (a: { name: string; id: number }, b: { name: string; id: number }) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id - b.id;
+    const byName = (
+      a: { name: string; id: number },
+      b: { name: string; id: number },
+    ) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) ||
+      a.id - b.id;
     matched.sort((a, b) => {
       if (sortKey === 'name_desc') return byName(b, a);
-      if (sortKey === 'price_asc') return (a.price ?? 0) - (b.price ?? 0) || byName(a, b);
-      if (sortKey === 'price_desc') return (b.price ?? 0) - (a.price ?? 0) || byName(a, b);
+      if (sortKey === 'price_asc')
+        return (a.price ?? 0) - (b.price ?? 0) || byName(a, b);
+      if (sortKey === 'price_desc')
+        return (b.price ?? 0) - (a.price ?? 0) || byName(a, b);
       if (sortKey === 'newest') {
         return b.createdAt.getTime() - a.createdAt.getTime() || byName(a, b);
       }
@@ -513,7 +607,9 @@ export class ProductsService {
         value: o.value,
         priceModifier: o.priceOverride ?? 0,
         stockCount: o.stockCount,
-        isAvailable: o.isAvailable !== false && !(o.stockCount != null && o.stockCount === 0),
+        isAvailable:
+          o.isAvailable !== false &&
+          !(o.stockCount != null && o.stockCount === 0),
       })),
     );
   }
@@ -613,4 +709,3 @@ function mapProductArtisan(p: {
   }
   return null;
 }
-

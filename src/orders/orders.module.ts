@@ -17,6 +17,13 @@ import { OrderQualityService } from './order-quality.service';
 import { OrderQualityScheduler } from './order-quality.scheduler';
 import { OrderMilestoneController } from './order-milestone.controller';
 import { OrderMilestoneService } from './order-milestone.service';
+import { TestOrderSimulationController } from '../test-orders/test-order-simulation.controller';
+import { TestOrderSimulationService } from '../test-orders/test-order-simulation.service';
+import { shouldRegisterTestOrderController } from '../test-orders/test-order-environment';
+
+const testOrderControllers = shouldRegisterTestOrderController()
+  ? [TestOrderSimulationController]
+  : [];
 
 @Module({
   imports: [NotificationsModule, forwardRef(() => PaymentsModule)],
@@ -27,6 +34,7 @@ import { OrderMilestoneService } from './order-milestone.service';
     OrderQualityController,
     OrderMilestoneController,
     OrdersController,
+    ...testOrderControllers,
   ],
   providers: [
     OrdersService,
@@ -39,6 +47,7 @@ import { OrderMilestoneService } from './order-milestone.service';
     OrderQualityService,
     OrderQualityScheduler,
     OrderMilestoneService,
+    TestOrderSimulationService,
   ],
   exports: [
     OrdersService,
@@ -50,4 +59,3 @@ import { OrderMilestoneService } from './order-milestone.service';
   ],
 })
 export class OrdersModule {}
-

@@ -24,6 +24,7 @@ import type {
   VerifyPayoutTransferBody,
 } from './dto/artisan-payout.dto';
 import type { PayoutLimitsConfig, PayoutStatus } from './payout.constants';
+import { assertTestOrderEnvironment } from '../test-orders/test-order-environment';
 
 const EPSILON = 0.009;
 
@@ -76,7 +77,10 @@ export class ArtisanPayoutService {
     }
     const rule = limits[currency];
     let maxAllowed: number | null = null;
-    if (typeof rule.maxAbsolute === 'number' && Number.isFinite(rule.maxAbsolute)) {
+    if (
+      typeof rule.maxAbsolute === 'number' &&
+      Number.isFinite(rule.maxAbsolute)
+    ) {
       maxAllowed = rule.maxAbsolute;
     }
     if (
@@ -151,6 +155,10 @@ export class ArtisanPayoutService {
       typeof payload.estimatedMaterialCost === 'number'
         ? payload.estimatedMaterialCost
         : null;
+    const order = await this.prisma.order.findUnique({
+      where: { id: params.orderId },
+      select: { isTestOrder: true },
+    });
 
     return this.prisma.orderArtisanPayout.create({
       data: {
@@ -159,6 +167,7 @@ export class ArtisanPayoutService {
         currency: params.currency || 'NGN',
         requestedAmount: requested,
         status: 'requested',
+        isSimulated: order?.isTestOrder ?? false,
         fundingRequired: true,
         events: {
           create: {
@@ -586,7 +595,10 @@ export class ArtisanPayoutService {
     const hasBlockingTransfer = payout.transfers.some((t) =>
       ['disputed', 'reversed'].includes(t.status),
     );
-    if (hasBlockingTransfer && verifiedTotal + EPSILON < payout.approvedAmount) {
+    if (
+      hasBlockingTransfer &&
+      verifiedTotal + EPSILON < payout.approvedAmount
+    ) {
       return {
         eligible: false,
         reason: 'Disputed or reversed transfers leave funding insufficient',
@@ -626,7 +638,10 @@ export class ArtisanPayoutService {
     orderId: number,
     body: ApprovePayoutAmountBody,
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_amount_approve');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_amount_approve',
+    );
     if (
       typeof body.approvedAmount !== 'number' ||
       !Number.isFinite(body.approvedAmount) ||
@@ -670,14 +685,22 @@ export class ArtisanPayoutService {
       });
     }
 
-    if (['verified', 'not_required'].includes(payout.status) && !payout.disputeFlag) {
+    if (
+      ['verified', 'not_required'].includes(payout.status) &&
+      !payout.disputeFlag
+    ) {
       throw new ConflictException({
         message: `Cannot re-approve amount while payout status is "${payout.status}"`,
         code: 'CONFLICT',
       });
     }
 
-    const currency = (body.currency || payout.currency || order.currency || 'NGN').toUpperCase();
+    const currency = (
+      body.currency ||
+      payout.currency ||
+      order.currency ||
+      'NGN'
+    ).toUpperCase();
     const limit = this.evaluateLimit({
       orderPrice: order.price,
       currency,
@@ -720,9 +743,7 @@ export class ArtisanPayoutService {
             : limit.policyStatus,
         fundingRequired: body.approvedAmount > 0,
         status:
-          body.approvedAmount === 0
-            ? 'amount_approved'
-            : 'amount_approved',
+          body.approvedAmount === 0 ? 'amount_approved' : 'amount_approved',
         events: {
           create: {
             orderId,
@@ -743,9 +764,10 @@ export class ArtisanPayoutService {
     });
 
     // Mirror initial funding as milestone row (idempotent helpers live in milestone service).
-    const existingInitial = await this.prisma.orderArtisanPayoutMilestone.findFirst({
-      where: { payoutId: updated.id, kind: 'initial' },
-    });
+    const existingInitial =
+      await this.prisma.orderArtisanPayoutMilestone.findFirst({
+        where: { payoutId: updated.id, kind: 'initial' },
+      });
     if (!existingInitial && body.approvedAmount > 0) {
       await this.prisma.orderArtisanPayoutMilestone.create({
         data: {
@@ -880,7 +902,10 @@ export class ArtisanPayoutService {
     body: RecordPayoutTransferBody,
     files: Express.Multer.File[] = [],
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_transfer_record');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_transfer_record',
+    );
 
     if (
       typeof body.amount !== 'number' ||
@@ -923,6 +948,16 @@ export class ArtisanPayoutService {
       });
     }
     const payout = order.artisanPayout;
+    if (order.isTestOrder) {
+      assertTestOrderEnvironment(this.config, admin.sub);
+      if (!body.externalReference.trim().startsWith('SIM-')) {
+        throw new BadRequestException({
+          message:
+            'Test orders require a SIM- transfer reference and must never use a bank reference',
+          code: 'SIMULATED_REFERENCE_REQUIRED',
+        });
+      }
+    }
     if (!payout.fundingRequired || payout.status === 'not_required') {
       throw new BadRequestException({
         message: 'Funding is marked not required for this order',
@@ -964,6 +999,7 @@ export class ArtisanPayoutService {
             externalReference: ref,
             status: 'recorded',
             recordedById: admin.sub,
+            isSimulated: order.isTestOrder,
             evidence: {
               create: (files ?? []).map((file) => ({
                 attachmentPublicId: cloudinaryPublicId(file),
@@ -1030,7 +1066,10 @@ export class ArtisanPayoutService {
     body: VerifyPayoutTransferBody,
     files: Express.Multer.File[] = [],
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_transfer_verify');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_transfer_verify',
+    );
     if (!body.notes?.trim()) {
       throw new BadRequestException({
         message: 'verification notes are required',
@@ -1087,90 +1126,95 @@ export class ArtisanPayoutService {
       });
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      if (files?.length) {
-        await tx.orderArtisanPayoutEvidence.createMany({
-          data: files.map((file) => ({
-            transferId: transfer.id,
-            attachmentPublicId: cloudinaryPublicId(file),
-            attachmentResourceType: cloudinaryResourceType(file, file.mimetype),
-            attachmentName: file.originalname || 'evidence',
-            attachmentMimeType: file.mimetype || 'application/octet-stream',
-            attachmentBytes: file.size ?? null,
-            attachmentKind: (file.mimetype || '').startsWith('image/')
-              ? 'image'
-              : 'document',
-          })),
+    return this.prisma
+      .$transaction(async (tx) => {
+        if (files?.length) {
+          await tx.orderArtisanPayoutEvidence.createMany({
+            data: files.map((file) => ({
+              transferId: transfer.id,
+              attachmentPublicId: cloudinaryPublicId(file),
+              attachmentResourceType: cloudinaryResourceType(
+                file,
+                file.mimetype,
+              ),
+              attachmentName: file.originalname || 'evidence',
+              attachmentMimeType: file.mimetype || 'application/octet-stream',
+              attachmentBytes: file.size ?? null,
+              attachmentKind: (file.mimetype || '').startsWith('image/')
+                ? 'image'
+                : 'document',
+            })),
+          });
+        }
+
+        await tx.orderArtisanPayoutTransfer.update({
+          where: { id: transfer.id },
+          data: {
+            status: 'verified',
+            verifiedById: admin.sub,
+            verifiedAt: new Date(),
+            verificationNotes: body.notes.trim(),
+          },
         });
-      }
 
-      await tx.orderArtisanPayoutTransfer.update({
-        where: { id: transfer.id },
-        data: {
-          status: 'verified',
-          verifiedById: admin.sub,
-          verifiedAt: new Date(),
-          verificationNotes: body.notes.trim(),
-        },
-      });
+        const allTransfers = await tx.orderArtisanPayoutTransfer.findMany({
+          where: { payoutId: payout.id },
+        });
+        const verifiedTotal = this.verifiedTransferTotal(
+          allTransfers,
+          payout.currency,
+        );
+        const funded = verifiedTotal + EPSILON >= payout.approvedAmount!;
+        const nextStatus: PayoutStatus = funded ? 'verified' : 'recorded';
 
-      const allTransfers = await tx.orderArtisanPayoutTransfer.findMany({
-        where: { payoutId: payout.id },
-      });
-      const verifiedTotal = this.verifiedTransferTotal(
-        allTransfers,
-        payout.currency,
-      );
-      const funded = verifiedTotal + EPSILON >= payout.approvedAmount!;
-      const nextStatus: PayoutStatus = funded ? 'verified' : 'recorded';
-
-      await tx.orderArtisanPayout.update({
-        where: { id: payout.id },
-        data: {
-          status: nextStatus,
-          events: {
-            create: {
-              orderId,
-              actorId: admin.sub,
-              action: 'transfer_verified',
-              detail: {
-                transferId: transfer.id,
-                verifiedTotal,
-                approvedAmount: payout.approvedAmount,
-                unlocksStartWork: funded,
+        await tx.orderArtisanPayout.update({
+          where: { id: payout.id },
+          data: {
+            status: nextStatus,
+            events: {
+              create: {
+                orderId,
+                actorId: admin.sub,
+                action: 'transfer_verified',
+                detail: {
+                  transferId: transfer.id,
+                  verifiedTotal,
+                  approvedAmount: payout.approvedAmount,
+                  unlocksStartWork: funded,
+                },
               },
             },
           },
-        },
-      });
+        });
 
-      if (funded && payout.orderId) {
-        const ord = await tx.order.findUnique({ where: { id: orderId } });
-        if (ord?.providerId) {
-          // notify outside tx below
+        if (funded && payout.orderId) {
+          const ord = await tx.order.findUnique({ where: { id: orderId } });
+          if (ord?.providerId) {
+            // notify outside tx below
+          }
         }
-      }
 
-      return {
-        transferId: transfer.id,
-        payoutStatus: nextStatus,
-        verifiedTotal,
-        unlocksStartWork: funded,
-        providerId: (await tx.order.findUnique({ where: { id: orderId } }))
-          ?.providerId,
-        productName: (await tx.order.findUnique({ where: { id: orderId } }))
-          ?.productName,
-      };
-    }).then(async (result) => {
-      if (result.unlocksStartWork && result.providerId) {
-        await this.notifications.notifyArtisanPayoutVerified(
-          result.providerId,
-          orderId,
-          result.productName ?? `Order #${orderId}`,
-        );
-      }
-      return result;
-    });
+        return {
+          transferId: transfer.id,
+          payoutStatus: nextStatus,
+          verifiedTotal,
+          unlocksStartWork: funded,
+          providerId: (await tx.order.findUnique({ where: { id: orderId } }))
+            ?.providerId,
+          productName: (await tx.order.findUnique({ where: { id: orderId } }))
+            ?.productName,
+        };
+      })
+      .then(async (result) => {
+        if (result.unlocksStartWork && result.providerId) {
+          await this.notifications.notifyArtisanPayoutVerified(
+            result.providerId,
+            orderId,
+            result.productName ?? `Order #${orderId}`,
+          );
+        }
+        return result;
+      });
   }
 
   async rejectTransfer(
@@ -1179,7 +1223,10 @@ export class ArtisanPayoutService {
     transferId: number,
     body: { reason: string },
   ) {
-    await this.capabilities.assertCapability(admin.sub, 'payout_transfer_verify');
+    await this.capabilities.assertCapability(
+      admin.sub,
+      'payout_transfer_verify',
+    );
     if (!body.reason?.trim()) {
       throw new BadRequestException({
         message: 'reason is required',
@@ -1257,7 +1304,9 @@ export class ArtisanPayoutService {
     const nextStatus: PayoutStatus = reverse ? 'reversed' : 'disputed';
 
     if (body.transferId) {
-      const t = order.artisanPayout.transfers.find((x) => x.id === body.transferId);
+      const t = order.artisanPayout.transfers.find(
+        (x) => x.id === body.transferId,
+      );
       if (!t) {
         throw new NotFoundException({
           message: 'Transfer not found',
@@ -1288,7 +1337,8 @@ export class ArtisanPayoutService {
               transferId: body.transferId ?? null,
               productionAlreadyStarted: productionStarted,
               // Never silently reset production history.
-              productionStartedAt: order.productionStartedAt?.toISOString() ?? null,
+              productionStartedAt:
+                order.productionStartedAt?.toISOString() ?? null,
             },
           },
         },
@@ -1377,97 +1427,97 @@ export class ArtisanPayoutService {
     try {
       const result = await this.prisma.$transaction(
         async (tx) => {
-        if (order.status === 'pending') {
-          await tx.order.update({
-            where: { id: orderId },
-            data: { status: 'confirmed' },
+          if (order.status === 'pending') {
+            await tx.order.update({
+              where: { id: orderId },
+              data: { status: 'confirmed' },
+            });
+            await tx.orderStatusHistory.create({
+              data: {
+                orderId,
+                status: 'confirmed',
+                changedBy: user.sub,
+                note: 'Auto-confirmed on Start Work',
+              },
+            });
+          }
+
+          const claimed = await tx.order.updateMany({
+            where: {
+              id: orderId,
+              productionStartedAt: null,
+              readinessWorkflowStatus: 'approved',
+              status: { in: ['confirmed', 'pending'] },
+            },
+            data: {
+              productionStartedAt: startedAt,
+              productionDeadline: deadline,
+              productionOriginalDeadline: deadline,
+              productionStartedById: user.sub,
+              productionDurationDays: durationDays,
+              qualityReviewStatus: 'in_production',
+              status: 'in_progress',
+            },
           });
+          if (claimed.count !== 1) {
+            const fresh = await tx.order.findUnique({ where: { id: orderId } });
+            if (fresh?.productionStartedAt) {
+              return {
+                alreadyStarted: true as const,
+                productionStartedAt: fresh.productionStartedAt,
+                productionDeadline: fresh.productionDeadline,
+                status: fresh.status,
+              };
+            }
+            throw new ConflictException({
+              message: 'Could not authorise Start Work',
+              code: 'CONFLICT',
+            });
+          }
+
           await tx.orderStatusHistory.create({
             data: {
               orderId,
-              status: 'confirmed',
+              status: 'in_progress',
               changedBy: user.sub,
-              note: 'Auto-confirmed on Start Work',
+              note: 'Start Work authorised',
             },
           });
-        }
 
-        const claimed = await tx.order.updateMany({
-          where: {
-            id: orderId,
-            productionStartedAt: null,
-            readinessWorkflowStatus: 'approved',
-            status: { in: ['confirmed', 'pending'] },
-          },
-          data: {
-            productionStartedAt: startedAt,
-            productionDeadline: deadline,
-            productionOriginalDeadline: deadline,
-            productionStartedById: user.sub,
-            productionDurationDays: durationDays,
-            qualityReviewStatus: 'in_production',
-            status: 'in_progress',
-          },
-        });
-        if (claimed.count !== 1) {
-          const fresh = await tx.order.findUnique({ where: { id: orderId } });
-          if (fresh?.productionStartedAt) {
-            return {
-              alreadyStarted: true as const,
-              productionStartedAt: fresh.productionStartedAt,
-              productionDeadline: fresh.productionDeadline,
-              status: fresh.status,
-            };
+          if (order.artisanPayout) {
+            await tx.orderArtisanPayoutEvent.create({
+              data: {
+                payoutId: order.artisanPayout.id,
+                orderId,
+                actorId: user.sub,
+                action: 'start_work',
+                detail: {
+                  productionStartedAt: startedAt.toISOString(),
+                  productionDeadline: deadline.toISOString(),
+                  productionDurationDays: durationDays,
+                },
+              },
+            });
           }
-          throw new ConflictException({
-            message: 'Could not authorise Start Work',
-            code: 'CONFLICT',
-          });
-        }
 
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId,
-            status: 'in_progress',
-            changedBy: user.sub,
-            note: 'Start Work authorised',
-          },
-        });
-
-        if (order.artisanPayout) {
-          await tx.orderArtisanPayoutEvent.create({
+          await tx.orderReadinessEvent.create({
             data: {
-              payoutId: order.artisanPayout.id,
               orderId,
               actorId: user.sub,
               action: 'start_work',
               detail: {
                 productionStartedAt: startedAt.toISOString(),
                 productionDeadline: deadline.toISOString(),
-                productionDurationDays: durationDays,
               },
             },
           });
-        }
 
-        await tx.orderReadinessEvent.create({
-          data: {
-            orderId,
-            actorId: user.sub,
-            action: 'start_work',
-            detail: {
-              productionStartedAt: startedAt.toISOString(),
-              productionDeadline: deadline.toISOString(),
-            },
-          },
-        });
-
-        return {
-          alreadyStarted: false as const,
-          productionStartedAt: startedAt,
-          productionDeadline: deadline,
-          status: 'in_progress',
-        };
+          return {
+            alreadyStarted: false as const,
+            productionStartedAt: startedAt,
+            productionDeadline: deadline,
+            status: 'in_progress',
+          };
         },
         { maxWait: 10_000, timeout: 20_000 },
       );

@@ -4,7 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { artisanDisplayName, productArtisanInclude, productToDto } from '../common/product-mapper';
+import {
+  artisanDisplayName,
+  productArtisanInclude,
+  productToDto,
+} from '../common/product-mapper';
 import { publicProductWhere } from '../common/active-product';
 import { catalogueProviderFilter } from '../common/canonical-storefronts';
 import { ArtisanScoringService } from '../scoring/artisan-scoring.service';
@@ -330,7 +334,9 @@ export class SectionsService {
         { category: { contains: term, mode: 'insensitive' as const } },
         {
           keywords: {
-            some: { keyword: { term: { equals: term, mode: 'insensitive' as const } } },
+            some: {
+              keyword: { term: { equals: term, mode: 'insensitive' as const } },
+            },
           },
         },
       ]);
@@ -435,7 +441,9 @@ export class SectionsService {
         status: 'approved',
         userId: {
           notIn: [
-            ...[...exclude].map((id) => Number(id)).filter((n) => !Number.isNaN(n)),
+            ...[...exclude]
+              .map((id) => Number(id))
+              .filter((n) => !Number.isNaN(n)),
             ...fromScores.map((a) => Number(a.id)),
             ...hidden,
           ],
@@ -452,7 +460,9 @@ export class SectionsService {
     items: { itemType: string; itemId: string; position: number }[],
     type: 'product' | 'artisan',
   ) {
-    const hidden = new Set((await catalogueProviderFilter(this.prisma))?.notIn ?? []);
+    const hidden = new Set(
+      (await catalogueProviderFilter(this.prisma))?.notIn ?? [],
+    );
     const out: Array<Record<string, unknown>> = [];
     for (const item of items) {
       const id = Number(item.itemId);
@@ -545,7 +555,8 @@ export class SectionsService {
       brandName: a.brandName ?? null,
       businessName: a.businessName ?? null,
       description: a.description || a.about || '',
-      location: a.location || [a.city, a.state, a.country].filter(Boolean).join(', '),
+      location:
+        a.location || [a.city, a.state, a.country].filter(Boolean).join(', '),
       city: a.city ?? null,
       state: a.state ?? null,
       country: a.country ?? null,
@@ -579,6 +590,8 @@ export class SectionsService {
       addedAt: Date;
     }[];
   }) {
+    const hiddenProviderFilter = await catalogueProviderFilter(this.prisma);
+    const hiddenProviders = new Set(hiddenProviderFilter?.notIn ?? []);
     const expectedType = isSectionKey(section.sectionKey)
       ? SECTION_ITEM_TYPES[section.sectionKey]
       : 'product';
@@ -607,20 +620,34 @@ export class SectionsService {
             imageUrl: true,
             images: true,
             status: true,
+            deletedAt: true,
+            providerId: true,
             provider: {
               select: {
                 name: true,
-                artisanProfile: { select: { brandName: true, businessName: true } },
+                artisanProfile: {
+                  select: { brandName: true, businessName: true },
+                },
               },
             },
           },
         });
         if (p) {
+          const ineligibleReason =
+            p.deletedAt != null
+              ? 'Product has been removed from the public catalogue.'
+              : p.status !== 'approved'
+                ? `Product status is ${p.status}; only approved products are public.`
+                : p.providerId != null && hiddenProviders.has(p.providerId)
+                  ? 'Product belongs to a duplicate/non-canonical storefront.'
+                  : null;
           preview = {
             id: p.id,
             name: p.name,
             image: p.imageUrl || p.images[0] || null,
             status: p.status,
+            publicEligible: ineligibleReason == null,
+            publicIneligibleReason: ineligibleReason,
             artisanName:
               p.provider?.artisanProfile?.brandName?.trim() ||
               p.provider?.artisanProfile?.businessName?.trim() ||
@@ -682,7 +709,9 @@ export class SectionsService {
   /** Creates missing shelves and corrects the seeded Best Sellers label on Featured Picks. */
   private async ensureKnownSections() {
     for (const sectionKey of SECTION_KEYS) {
-      const existing = await this.prisma.curatedSection.findUnique({ where: { sectionKey } });
+      const existing = await this.prisma.curatedSection.findUnique({
+        where: { sectionKey },
+      });
       if (!existing) {
         await this.prisma.curatedSection.create({
           data: {
@@ -695,7 +724,10 @@ export class SectionsService {
         });
         continue;
       }
-      if (sectionKey === 'featured_picks' && existing.label === 'Best Sellers') {
+      if (
+        sectionKey === 'featured_picks' &&
+        existing.label === 'Best Sellers'
+      ) {
         await this.prisma.curatedSection.update({
           where: { id: existing.id },
           data: { label: SECTION_LABELS.featured_picks },
@@ -728,7 +760,9 @@ export class SectionsService {
           _count: { _all: true },
         })
       : [];
-    const counts = new Map(grouped.map((row) => [row.productId, row._count._all]));
+    const counts = new Map(
+      grouped.map((row) => [row.productId, row._count._all]),
+    );
     const ranked = candidates
       .filter((row) => !exclude.has(String(row.id)))
       .filter((row) => row.isBestSeller || (counts.get(row.id) ?? 0) > 0)
@@ -751,10 +785,12 @@ export class SectionsService {
     return ranked.flatMap((row) => {
       const product = byId.get(row.id);
       if (!product) return [];
-      return [{
-        ...this.productPublic(product),
-        artisanName: artisanDisplayName(product.provider),
-      }];
+      return [
+        {
+          ...this.productPublic(product),
+          artisanName: artisanDisplayName(product.provider),
+        },
+      ];
     });
   }
 

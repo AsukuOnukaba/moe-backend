@@ -8,10 +8,7 @@ import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentMethodsService } from '../payments/payment-methods.service';
-import {
-  CheckoutPaymentMethod,
-  CreateOrderDto,
-} from './dto/create-order.dto';
+import { CheckoutPaymentMethod, CreateOrderDto } from './dto/create-order.dto';
 import { priceOrderLine } from './order-pricing';
 import { validateCustomisationPayload } from '../products/product-customisation.templates';
 import {
@@ -60,6 +57,9 @@ type Order = {
   paymentMethodId: string | null;
   paymentReference: string | null;
   paymentStatus: string;
+  isTestOrder: boolean;
+  testReference: string | null;
+  simulatedPaymentStatus: string | null;
   estimatedDelivery: string | null;
   artisanName: string | null;
   readiness?: ReturnType<OrderReadinessService['readinessSummary']>;
@@ -185,6 +185,9 @@ export class OrdersService {
     paymentMethodId: string | null;
     paymentReference: string | null;
     paymentStatus: string;
+    isTestOrder?: boolean;
+    testReference?: string | null;
+    simulatedPaymentStatus?: string | null;
     estimatedDelivery: string | null;
     shippingAddress: unknown;
     shippingFirstName: string | null;
@@ -250,13 +253,17 @@ export class OrdersService {
       basePrice: dbOrder.basePrice,
       rushSurcharge: dbOrder.rushSurcharge,
       rushOrder: dbOrder.rushOrder,
-      customisationData: (dbOrder.customisationData as Record<string, unknown>) ?? null,
+      customisationData:
+        (dbOrder.customisationData as Record<string, unknown>) ?? null,
       currency: dbOrder.currency,
       shippingAddress: this.resolveShippingForResponse(dbOrder),
       paymentMethod: dbOrder.paymentMethod,
       paymentMethodId: dbOrder.paymentMethodId,
       paymentReference: dbOrder.paymentReference,
       paymentStatus: dbOrder.paymentStatus,
+      isTestOrder: dbOrder.isTestOrder ?? false,
+      testReference: dbOrder.testReference ?? null,
+      simulatedPaymentStatus: dbOrder.simulatedPaymentStatus ?? null,
       estimatedDelivery: dbOrder.estimatedDelivery,
       artisanName: dbOrder.providerName,
       readiness: this.readiness.readinessSummary(readinessFields),
@@ -319,11 +326,17 @@ export class OrdersService {
     const page = Math.max(1, Number(query?.page ?? 1));
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
     const isCustomOrder =
-      query?.isCustomOrder === 'true' ? true : query?.isCustomOrder === 'false' ? false : undefined;
+      query?.isCustomOrder === 'true'
+        ? true
+        : query?.isCustomOrder === 'false'
+          ? false
+          : undefined;
 
     const view = typeof query.view === 'string' ? query.view.trim() : '';
     let where: Record<string, unknown> =
-      user.role === 'artisan' ? { providerId: user.sub } : { customerId: user.sub };
+      user.role === 'artisan'
+        ? { providerId: user.sub }
+        : { customerId: user.sub };
 
     if (user.role === 'artisan' && view === 'new') {
       where = artisanNewOrdersWhere(user.sub);
@@ -362,32 +375,35 @@ export class OrdersService {
           _count: { _all: true },
         })
       ).map((row) => ({ status: row.status, count: row._count._all }));
-      const [newReadinessCount, legacyPendingWithoutReadiness] = await Promise.all([
-        this.prisma.order.count({
-          where: {
-            providerId: user.sub,
-            readinessWorkflowStatus: { in: [...NEW_ORDERS_READINESS_STATUSES] },
-            productionStartedAt: null,
-            status: {
-              notIn: [
-                'cancelled',
-                'rejected',
-                'in_progress',
-                'ready',
-                'shipped',
-                'delivered',
-              ],
+      const [newReadinessCount, legacyPendingWithoutReadiness] =
+        await Promise.all([
+          this.prisma.order.count({
+            where: {
+              providerId: user.sub,
+              readinessWorkflowStatus: {
+                in: [...NEW_ORDERS_READINESS_STATUSES],
+              },
+              productionStartedAt: null,
+              status: {
+                notIn: [
+                  'cancelled',
+                  'rejected',
+                  'in_progress',
+                  'ready',
+                  'shipped',
+                  'delivered',
+                ],
+              },
             },
-          },
-        }),
-        this.prisma.order.count({
-          where: {
-            providerId: user.sub,
-            readinessWorkflowStatus: null,
-            status: 'pending',
-          },
-        }),
-      ]);
+          }),
+          this.prisma.order.count({
+            where: {
+              providerId: user.sub,
+              readinessWorkflowStatus: null,
+              status: 'pending',
+            },
+          }),
+        ]);
       summary = summarizeArtisanOrdersWithReadiness(
         statusRows,
         newReadinessCount,
@@ -402,7 +418,9 @@ export class OrdersService {
     };
   }
 
-  private resolveListStatuses(query: Record<string, unknown>): string[] | undefined {
+  private resolveListStatuses(
+    query: Record<string, unknown>,
+  ): string[] | undefined {
     const view = typeof query.view === 'string' ? query.view.trim() : '';
     if (view && view !== 'all') {
       if (!isArtisanOrderView(view)) {
@@ -420,7 +438,10 @@ export class OrdersService {
 
     const raw = typeof query.status === 'string' ? query.status.trim() : '';
     if (!raw) return undefined;
-    const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+    const parts = raw
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
     const invalid = parts.filter((part) => !VALID_ORDER_STATUSES.has(part));
     if (invalid.length > 0) {
       throw new BadRequestException({
@@ -570,7 +591,11 @@ export class OrdersService {
     return this.toOrderResponse(updated);
   }
 
-  async create(user: AccessTokenPayload, body: CreateOrderDto) {
+  async create(
+    user: AccessTokenPayload,
+    body: CreateOrderDto,
+    simulation?: { isTestOrder: true; testReference: string },
+  ) {
     const customerId = user.sub;
     const items = body.items ?? [];
     if (items.length === 0) {
@@ -587,7 +612,8 @@ export class OrdersService {
     if (paymentMethod === CheckoutPaymentMethod.CARD) {
       if (!paymentMethodId && !gatewayToken) {
         throw new BadRequestException({
-          message: 'paymentMethodId or gatewayToken is required for card payments',
+          message:
+            'paymentMethodId or gatewayToken is required for card payments',
           code: 'VALIDATION_ERROR',
         });
       }
@@ -602,7 +628,8 @@ export class OrdersService {
       }
       if (!body.cardBrand || !body.cardLast4 || !body.cardExpiry) {
         throw new BadRequestException({
-          message: 'cardBrand, cardLast4, and cardExpiry are required when saveCard is true',
+          message:
+            'cardBrand, cardLast4, and cardExpiry are required when saveCard is true',
           code: 'VALIDATION_ERROR',
         });
       }
@@ -675,8 +702,10 @@ export class OrdersService {
       Object.keys(rawCustomisation).every((k) => variationKeys.has(k));
 
     const selectedVariations = {
-      ...((first.selectedVariants as Record<string, unknown> | undefined) ?? {}),
-      ...((first.selectedVariations as Record<string, unknown> | undefined) ?? {}),
+      ...((first.selectedVariants as Record<string, unknown> | undefined) ??
+        {}),
+      ...((first.selectedVariations as Record<string, unknown> | undefined) ??
+        {}),
       ...(customisationLooksLikeVariations ? rawCustomisation : {}),
     };
     const selectedBodyType =
@@ -697,9 +726,7 @@ export class OrdersService {
               ? { selectedVariations }
               : {}),
             ...(selectedBodyType ? { selectedBodyType } : {}),
-            ...(first.selectedSize
-              ? { selectedSize: first.selectedSize }
-              : {}),
+            ...(first.selectedSize ? { selectedSize: first.selectedSize } : {}),
           }
         : null;
 
@@ -714,7 +741,9 @@ export class OrdersService {
           parts.push(`unknown keys: ${validation.unknownKeys.join(', ')}`);
         }
         if (validation.missingRequired.length) {
-          parts.push(`missing required: ${validation.missingRequired.join(', ')}`);
+          parts.push(
+            `missing required: ${validation.missingRequired.join(', ')}`,
+          );
         }
         throw new BadRequestException({
           message: `Invalid customisation (${parts.join('; ')})`,
@@ -760,10 +789,14 @@ export class OrdersService {
         shippingState: shippingAddress.state,
         shippingCountry: shippingAddress.country,
         shippingPostalCode: shippingAddress.postalCode,
-        paymentMethod,
+        paymentMethod: simulation ? 'simulated' : paymentMethod,
         paymentMethodId: resolvedPaymentMethodId,
         paymentReference,
-        paymentStatus: paymentMethod === CheckoutPaymentMethod.COD ? 'unpaid' : 'unpaid',
+        paymentStatus:
+          paymentMethod === CheckoutPaymentMethod.COD ? 'unpaid' : 'unpaid',
+        isTestOrder: simulation?.isTestOrder ?? false,
+        testReference: simulation?.testReference ?? null,
+        simulatedPaymentStatus: simulation ? 'pending' : null,
         estimatedDelivery:
           product.estimatedDelivery ??
           (product.estimatedDeliveryDays
@@ -791,7 +824,8 @@ export class OrdersService {
         brand: body.cardBrand!,
         last4: body.cardLast4!,
         expiry: body.cardExpiry!,
-        cardholderName: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
+        cardholderName:
+          `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
       });
       resolvedPaymentMethodId = saved.id;
       await this.prisma.order.update({
@@ -802,8 +836,11 @@ export class OrdersService {
 
     await this.notifications.notifyOrderCreated(customerId, dbOrder.id);
 
-    const paymentMethods = await this.paymentMethods.listForCheckout(customerId);
-    const fresh = await this.prisma.order.findUnique({ where: { id: dbOrder.id } });
+    const paymentMethods =
+      await this.paymentMethods.listForCheckout(customerId);
+    const fresh = await this.prisma.order.findUnique({
+      where: { id: dbOrder.id },
+    });
 
     return {
       ...this.toOrderResponse({
@@ -814,7 +851,11 @@ export class OrdersService {
     };
   }
 
-  async patch(user: AccessTokenPayload, orderId: string, body: Record<string, unknown>) {
+  async patch(
+    user: AccessTokenPayload,
+    orderId: string,
+    body: Record<string, unknown>,
+  ) {
     const dbOrder = await this.prisma.order.findUnique({
       where: { id: Number(orderId) },
     });
@@ -841,20 +882,37 @@ export class OrdersService {
     gateway: 'paystack' | 'flutterwave';
     reference: string;
     outcome: 'paid' | 'failed';
-  }): Promise<{ paymentStatus: string; orderStatus: string; alreadyPaid: boolean }> {
-    const dbOrder = await this.prisma.order.findUnique({ where: { id: input.orderId } });
+  }): Promise<{
+    paymentStatus: string;
+    orderStatus: string;
+    alreadyPaid: boolean;
+  }> {
+    const dbOrder = await this.prisma.order.findUnique({
+      where: { id: input.orderId },
+    });
     if (!dbOrder || dbOrder.customerId !== input.customerId) {
-      throw new NotFoundException({ message: 'Order not found', code: 'RESOURCE_NOT_FOUND' });
+      throw new NotFoundException({
+        message: 'Order not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
     }
     if (dbOrder.paymentStatus === 'paid') {
-      return { paymentStatus: 'paid', orderStatus: dbOrder.status, alreadyPaid: true };
+      return {
+        paymentStatus: 'paid',
+        orderStatus: dbOrder.status,
+        alreadyPaid: true,
+      };
     }
     if (input.outcome === 'failed') {
       await this.prisma.order.updateMany({
         where: { id: dbOrder.id, paymentStatus: { not: 'paid' } },
         data: { paymentStatus: 'failed' },
       });
-      return { paymentStatus: 'failed', orderStatus: dbOrder.status, alreadyPaid: false };
+      return {
+        paymentStatus: 'failed',
+        orderStatus: dbOrder.status,
+        alreadyPaid: false,
+      };
     }
     if (dbOrder.status === 'cancelled' || dbOrder.status === 'rejected') {
       throw new BadRequestException({
@@ -863,7 +921,8 @@ export class OrdersService {
       });
     }
 
-    const nextStatus = dbOrder.status === 'pending' ? 'confirmed' : dbOrder.status;
+    const nextStatus =
+      dbOrder.status === 'pending' ? 'confirmed' : dbOrder.status;
     const updated = await this.prisma.order.updateMany({
       where: {
         id: dbOrder.id,
@@ -879,9 +938,15 @@ export class OrdersService {
       },
     });
     if (updated.count === 0) {
-      const fresh = await this.prisma.order.findUnique({ where: { id: dbOrder.id } });
+      const fresh = await this.prisma.order.findUnique({
+        where: { id: dbOrder.id },
+      });
       if (fresh?.paymentStatus === 'paid') {
-        return { paymentStatus: 'paid', orderStatus: fresh.status, alreadyPaid: true };
+        return {
+          paymentStatus: 'paid',
+          orderStatus: fresh.status,
+          alreadyPaid: true,
+        };
       }
       throw new BadRequestException({
         message: 'This order can no longer be paid',
@@ -890,14 +955,23 @@ export class OrdersService {
     }
 
     if (nextStatus !== dbOrder.status) {
-      await this.appendStatusHistory(dbOrder.id, nextStatus, null, 'Payment confirmed');
+      await this.appendStatusHistory(
+        dbOrder.id,
+        nextStatus,
+        null,
+        'Payment confirmed',
+      );
     }
     await this.emitOrderTransitionNotifications(dbOrder, {
       ...dbOrder,
       status: nextStatus,
       paymentStatus: 'paid',
     });
-    return { paymentStatus: 'paid', orderStatus: nextStatus, alreadyPaid: false };
+    return {
+      paymentStatus: 'paid',
+      orderStatus: nextStatus,
+      alreadyPaid: false,
+    };
   }
 
   private async priceLine(
@@ -909,7 +983,9 @@ export class OrdersService {
   ) {
     const variationTypes = await this.prisma.productVariationType.findMany({
       where: { productId: product.id, isEnabled: true },
-      include: { options: { select: { value: true, label: true, priceOverride: true } } },
+      include: {
+        options: { select: { value: true, label: true, priceOverride: true } },
+      },
     });
     const priced = priceOrderLine({
       catalogPrice: product.price,
@@ -932,11 +1008,24 @@ export class OrdersService {
     return `ORD-${String(id).padStart(3, '0')}`;
   }
 
-  private static readonly NOTIFY_PAYMENT_STATUSES = new Set(['paid', 'refunded']);
+  private static readonly NOTIFY_PAYMENT_STATUSES = new Set([
+    'paid',
+    'refunded',
+  ]);
 
   private async emitOrderTransitionNotifications(
-    before: { id: number; customerId: number; status: string; paymentStatus: string },
-    after: { id: number; customerId: number; status: string; paymentStatus: string },
+    before: {
+      id: number;
+      customerId: number;
+      status: string;
+      paymentStatus: string;
+    },
+    after: {
+      id: number;
+      customerId: number;
+      status: string;
+      paymentStatus: string;
+    },
   ) {
     if (after.status !== before.status) {
       await this.notifications.notifyOrderStatusChange(
@@ -960,7 +1049,8 @@ export class OrdersService {
 
   private async loadCustomerMap(customerIds: number[]) {
     const unique = [...new Set(customerIds)];
-    if (unique.length === 0) return new Map<number, { name: string; email: string }>();
+    if (unique.length === 0)
+      return new Map<number, { name: string; email: string }>();
 
     const users = await this.prisma.user.findMany({
       where: { id: { in: unique } },
@@ -984,6 +1074,9 @@ export class OrdersService {
       paymentStatus: string;
       paymentMethod: string;
       isCustomOrder: boolean;
+      isTestOrder?: boolean;
+      testReference?: string | null;
+      simulatedPaymentStatus?: string | null;
       createdAt: Date;
     },
     customer?: { name: string; email: string },
@@ -1004,6 +1097,9 @@ export class OrdersService {
       paymentStatus: dbOrder.paymentStatus,
       paymentMethod: dbOrder.paymentMethod,
       isCustomOrder: dbOrder.isCustomOrder,
+      isTestOrder: dbOrder.isTestOrder ?? false,
+      testReference: dbOrder.testReference ?? null,
+      simulatedPaymentStatus: dbOrder.simulatedPaymentStatus ?? null,
       createdAt: dbOrder.createdAt.toISOString(),
     };
   }
@@ -1013,9 +1109,12 @@ export class OrdersService {
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 20)));
     const skip = (page - 1) * pageSize;
 
-    const status = typeof query?.status === 'string' ? query.status.trim() : undefined;
+    const status =
+      typeof query?.status === 'string' ? query.status.trim() : undefined;
     const paymentStatus =
-      typeof query?.paymentStatus === 'string' ? query.paymentStatus.trim() : undefined;
+      typeof query?.paymentStatus === 'string'
+        ? query.paymentStatus.trim()
+        : undefined;
     const q = typeof query?.q === 'string' ? query.q.trim() : '';
 
     const where: Record<string, unknown> = {};
@@ -1027,6 +1126,7 @@ export class OrdersService {
       const or: Record<string, unknown>[] = [
         { productName: { contains: q, mode: 'insensitive' } },
         { providerName: { contains: q, mode: 'insensitive' } },
+        { testReference: { contains: q, mode: 'insensitive' } },
       ];
       if (!Number.isNaN(asId)) or.push({ id: asId });
 
@@ -1057,7 +1157,9 @@ export class OrdersService {
       }),
     ]);
 
-    const customerMap = await this.loadCustomerMap(items.map((o) => o.customerId));
+    const customerMap = await this.loadCustomerMap(
+      items.map((o) => o.customerId),
+    );
 
     return {
       data: items.map((item) =>
@@ -1077,7 +1179,10 @@ export class OrdersService {
       where: { id: orderId },
     });
     if (!dbOrder) {
-      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
     }
 
     const customer = await this.prisma.user.findUnique({
@@ -1111,18 +1216,32 @@ export class OrdersService {
     'rejected',
   ] as const;
 
-  private static readonly ADMIN_PAYMENT_STATUSES = ['unpaid', 'paid', 'refunded', 'failed'] as const;
+  private static readonly ADMIN_PAYMENT_STATUSES = [
+    'unpaid',
+    'paid',
+    'refunded',
+    'failed',
+  ] as const;
 
   async adminPatch(orderId: number, body: Record<string, unknown>) {
-    const dbOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+    const dbOrder = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!dbOrder) {
-      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+      throw new NotFoundException({
+        message: 'Not found',
+        code: 'RESOURCE_NOT_FOUND',
+      });
     }
 
     let nextStatus: string | undefined;
     if (typeof body?.status === 'string') {
       const status = body.status.trim();
-      if (!OrdersService.ADMIN_ORDER_STATUSES.includes(status as (typeof OrdersService.ADMIN_ORDER_STATUSES)[number])) {
+      if (
+        !OrdersService.ADMIN_ORDER_STATUSES.includes(
+          status as (typeof OrdersService.ADMIN_ORDER_STATUSES)[number],
+        )
+      ) {
         throw new BadRequestException({
           message: `Invalid status. Allowed: ${OrdersService.ADMIN_ORDER_STATUSES.join(', ')}`,
           code: 'VALIDATION_ERROR',
@@ -1160,7 +1279,9 @@ export class OrdersService {
         ...(typeof body?.paymentStatus === 'string'
           ? { paymentStatus: body.paymentStatus.trim() }
           : {}),
-        ...(typeof body?.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
+        ...(typeof body?.paymentMethod === 'string'
+          ? { paymentMethod: body.paymentMethod }
+          : {}),
       },
       include: {
         artisanPayout: {

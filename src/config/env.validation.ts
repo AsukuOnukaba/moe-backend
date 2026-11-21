@@ -18,8 +18,24 @@ class EnvVars {
   PORT?: number;
 
   @IsOptional()
-  @IsIn(['development', 'test', 'production'])
-  NODE_ENV?: 'development' | 'test' | 'production';
+  @IsIn(['development', 'test', 'staging', 'production'])
+  NODE_ENV?: 'development' | 'test' | 'staging' | 'production';
+
+  @IsOptional()
+  @IsIn(['development', 'test', 'staging', 'production'])
+  APP_ENV?: 'development' | 'test' | 'staging' | 'production';
+
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  TEST_ORDER_SIMULATION_ENABLED?: 'true' | 'false';
+
+  @IsOptional()
+  @IsString()
+  TEST_ORDER_SIMULATION_DATABASE_NAMES?: string;
+
+  @IsOptional()
+  @IsString()
+  TEST_ORDER_SIMULATION_ADMIN_IDS?: string;
 
   @IsOptional()
   @IsString()

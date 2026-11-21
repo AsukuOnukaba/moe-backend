@@ -30,6 +30,8 @@ model User {
   /// Admin action capabilities (finance/payout). Empty = no finance actions.
   /// e.g. payout_amount_approve, payout_transfer_record, payout_transfer_verify, payout_dispute, payout_mark_not_required
   adminCapabilities           String[]  @default([])
+  /// Dedicated local/staging fixture identity; never set on real users.
+  isTestUser                  Boolean   @default(false)
 
   roles           UserRole[]
   refreshTokens   RefreshToken[]
@@ -273,26 +275,31 @@ model PaymentMethod {
 }
 
 model Order {
-  id                Int     @id @default(autoincrement())
-  customerId        Int
-  productId         Int
-  productName       String?
-  productImage      String?
-  providerId        Int?
-  providerName      String?
-  customizationId   Int?
-  isCustomOrder     Boolean @default(false)
-  status            String  @default("pending")
-  price             Float?
-  basePrice         Float?
-  rushSurcharge     Float?
-  rushOrder         Boolean @default(false)
-  customisationData Json?
-  currency          String  @default("NGN")
-  paymentMethod     String  @default("bank_transfer")
-  paymentMethodId   String?
-  paymentReference  String?
-  paymentStatus     String  @default("unpaid")
+  id                     Int     @id @default(autoincrement())
+  customerId             Int
+  productId              Int
+  productName            String?
+  productImage           String?
+  providerId             Int?
+  providerName           String?
+  customizationId        Int?
+  isCustomOrder          Boolean @default(false)
+  status                 String  @default("pending")
+  price                  Float?
+  basePrice              Float?
+  rushSurcharge          Float?
+  rushOrder              Boolean @default(false)
+  customisationData      Json?
+  currency               String  @default("NGN")
+  paymentMethod          String  @default("bank_transfer")
+  paymentMethodId        String?
+  paymentReference       String?
+  paymentStatus          String  @default("unpaid")
+  /// Simulation markers are immutable identifiers for isolated test orders.
+  isTestOrder            Boolean @default(false)
+  testReference          String? @unique
+  simulatedPaymentStatus String?
+  simulationTimeScenario String?
 
   shippingAddress      Json?
   shippingFirstName    String?
@@ -366,6 +373,7 @@ model Order {
   productReviews               ProductReview[]
   artisanReviews               ArtisanReview[]
   supportTickets               ContactMessage[]
+  simulatedSettlement          SimulatedPaymentSettlement?
 
   @@index([customerId])
   @@index([productId])
@@ -376,6 +384,7 @@ model Order {
   @@index([productionDeadline])
   @@index([qualityReviewStatus])
   @@index([fulfillmentStatus])
+  @@index([isTestOrder, createdAt])
 }
 
 /// Versioned artisan readiness assessment for an order.
@@ -489,6 +498,7 @@ model OrderArtisanPayout {
   fundingRequired               Boolean   @default(true)
   /// requested | amount_approved | recorded | verified | rejected | disputed | reversed | not_required
   status                        String    @default("requested")
+  isSimulated                   Boolean   @default(false)
   disputeFlag                   Boolean   @default(false)
   disputeNotes                  String?
   /// Total approved artisan payable across milestones (may equal sum of milestones).
@@ -557,6 +567,7 @@ model OrderArtisanPayoutTransfer {
   verifiedAt        DateTime?
   verificationNotes String?
   rejectionReason   String?
+  isSimulated       Boolean   @default(false)
 
   payout    OrderArtisanPayout           @relation(fields: [payoutId], references: [id], onDelete: Cascade)
   milestone OrderArtisanPayoutMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
@@ -756,6 +767,7 @@ model PaymentAttempt {
   amountMinor    Int
   currency       String
   status         String    @default("pending")
+  isSimulated    Boolean   @default(false)
   paymentUrl     String?
   accessCode     String?
   saveCard       Boolean   @default(false)
@@ -772,6 +784,24 @@ model PaymentAttempt {
 
   @@index([orderId, gateway, status])
   @@index([customerId])
+}
+
+/// Test-only customer settlement. It deliberately has no gateway or provider
+/// reference and is never processed by Paystack/Flutterwave code.
+model SimulatedPaymentSettlement {
+  id          String   @id @default(uuid())
+  orderId     Int      @unique
+  customerId  Int
+  amountMinor Int
+  currency    String
+  status      String   @default("succeeded")
+  createdById Int
+  createdAt   DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, createdAt])
+  @@index([createdById, createdAt])
 }
 
 model PaymentWebhookEvent {

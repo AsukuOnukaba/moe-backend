@@ -11,6 +11,7 @@ import {
   productToDto,
 } from '../common/product-mapper';
 import { EventsService } from '../events/events.service';
+import { genuineOrderScope } from '../common/genuine-data';
 import { getCustomisationTemplate } from './product-customisation.templates';
 import {
   audienceWhere,
@@ -338,6 +339,7 @@ export class ProductsService {
           by: ['productId'],
           where: {
             productId: { in: ids },
+            ...genuineOrderScope,
             status: { notIn: ['cancelled', 'rejected'] },
           },
           _count: { _all: true },

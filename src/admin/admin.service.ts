@@ -12,6 +12,11 @@ import { ArtisanVerificationService } from '../artisans/artisan-verification.ser
 import { normalizeProductCategory } from '../common/product-categories';
 import { toStringList } from '../common/string-list';
 import { ProductVariationsService } from '../artisans/product-variations.service';
+import {
+  genuineArtisanReviewScope,
+  genuineOrderScope,
+  genuineProductReviewScope,
+} from '../common/genuine-data';
 import type { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import type { CreateAdminProductDto } from './dto/create-admin-product.dto';
 import {
@@ -59,16 +64,16 @@ export class AdminService {
       scoredArtisans,
       latestScore,
     ] = await Promise.all([
-      this.prisma.user.count(),
-      this.prisma.artisanProfile.count({ where: { status: { not: 'deleted' } } }),
-      this.prisma.artisanProfile.count({ where: { status: 'pending' } }),
-      this.prisma.artisanProfile.count({ where: { status: 'approved' } }),
-      this.prisma.artisanProfile.count({ where: { status: 'rejected' } }),
-      this.prisma.product.count({ where: activeProductWhere }),
-      this.prisma.product.count({ where: { status: 'pending', ...activeProductWhere } }),
-      this.prisma.product.count({ where: { status: 'approved', ...activeProductWhere } }),
-      this.prisma.product.count({ where: { status: 'rejected', ...activeProductWhere } }),
-      this.prisma.order.count(),
+      this.prisma.user.count({ where: { isTestUser: false } }),
+      this.prisma.artisanProfile.count({ where: { status: { not: 'deleted' }, user: { isTestUser: false } } }),
+      this.prisma.artisanProfile.count({ where: { status: 'pending', user: { isTestUser: false } } }),
+      this.prisma.artisanProfile.count({ where: { status: 'approved', user: { isTestUser: false } } }),
+      this.prisma.artisanProfile.count({ where: { status: 'rejected', user: { isTestUser: false } } }),
+      this.prisma.product.count({ where: { ...activeProductWhere, provider: { isTestUser: false } } }),
+      this.prisma.product.count({ where: { status: 'pending', ...activeProductWhere, provider: { isTestUser: false } } }),
+      this.prisma.product.count({ where: { status: 'approved', ...activeProductWhere, provider: { isTestUser: false } } }),
+      this.prisma.product.count({ where: { status: 'rejected', ...activeProductWhere, provider: { isTestUser: false } } }),
+      this.prisma.order.count({ where: genuineOrderScope }),
       this.prisma.curatedSection.findMany({
         include: {
           _count: { select: { items: { where: { isActive: true } } } },
@@ -169,9 +174,9 @@ export class AdminService {
         this.prisma.product.count({
           where: { providerId: id, ...activeProductWhere },
         }),
-        this.prisma.order.count({ where: { providerId: id } }),
+        this.prisma.order.count({ where: { providerId: id, ...genuineOrderScope } }),
         this.prisma.artisanReview.findMany({
-          where: { artisanId: id },
+          where: { artisanId: id, ...genuineArtisanReviewScope },
           include: { customer: { select: { name: true } } },
           orderBy: { createdAt: 'desc' },
         }),
@@ -926,7 +931,7 @@ export class AdminService {
     }
 
     const agg = await this.prisma.productReview.aggregate({
-      where: { productId: { in: productIds }, status: 'approved' },
+      where: { productId: { in: productIds }, status: 'approved', ...genuineProductReviewScope },
       _avg: { rating: true },
       _count: { id: true },
     });
@@ -1299,7 +1304,6 @@ export class AdminService {
     return this.orders.adminPatch(id, body);
   }
 }
-
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseCreatedInstant(value: string | undefined): { date?: Date; dateOnly: boolean } {

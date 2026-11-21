@@ -8,6 +8,7 @@ import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import { formatReviewerName } from '../common/reviewer-name';
+import { genuineProductReviewScope } from '../common/genuine-data';
 
 @Injectable()
 export class ProductReviewsService {
@@ -118,7 +119,11 @@ export class ProductReviewsService {
     }
 
     const agg = await this.prisma.productReview.aggregate({
-      where: { productId: { in: productIds }, status: 'approved' },
+      where: {
+        productId: { in: productIds },
+        status: 'approved',
+        ...genuineProductReviewScope,
+      },
       _avg: { rating: true },
       _count: { id: true },
     });
@@ -141,7 +146,11 @@ export class ProductReviewsService {
     const pageSize = Math.max(1, Math.min(100, Number(query?.pageSize ?? 5)));
     const skip = (page - 1) * pageSize;
 
-    const where = { productId, status: 'approved' };
+    const where = {
+      productId,
+      status: 'approved',
+      ...genuineProductReviewScope,
+    };
 
     const [items, totalItems, agg] = await Promise.all([
       this.prisma.productReview.findMany({

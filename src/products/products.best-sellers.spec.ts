@@ -87,6 +87,7 @@ describe('ProductsService Best Sellers ranking', () => {
     expect(prisma.order.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          isTestOrder: false,
           status: { notIn: ['cancelled', 'rejected'] },
         }),
       }),

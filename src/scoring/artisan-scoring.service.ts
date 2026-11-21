@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { genuineArtisanReviewScope } from '../common/genuine-data';
 
 /** Neutral baseline when a metric has insufficient data (0–100 scale). */
 export const NEUTRAL_SCORE = 50;
@@ -293,7 +294,7 @@ export class ArtisanScoringService {
   /** Average artisan review rating (1–5) normalized to 0–100. */
   private async calcReviewQualityScore(artisanId: number): Promise<number> {
     const agg = await this.prisma.artisanReview.aggregate({
-      where: { artisanId },
+      where: { artisanId, ...genuineArtisanReviewScope },
       _avg: { rating: true },
       _count: { _all: true },
     });
@@ -356,7 +357,6 @@ export class ArtisanScoringService {
     return clamp(score, 0, 100);
   }
 }
-
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }

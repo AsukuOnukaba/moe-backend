@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
+import { genuineProductReviewScope } from '../common/genuine-data';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
 import {
@@ -671,6 +672,7 @@ export class OrderQualityService {
         where: {
           productId: { in: products.map((p) => p.id) },
           status: 'approved',
+          ...genuineProductReviewScope,
         },
         _avg: { rating: true },
         _count: { id: true },

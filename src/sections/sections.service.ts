@@ -12,6 +12,7 @@ import {
 import { publicProductWhere } from '../common/active-product';
 import { catalogueProviderFilter } from '../common/canonical-storefronts';
 import { ArtisanScoringService } from '../scoring/artisan-scoring.service';
+import { genuineOrderScope } from '../common/genuine-data';
 import {
   isSectionKey,
   MIN_SECTION_ITEMS,
@@ -755,6 +756,7 @@ export class SectionsService {
           by: ['productId'],
           where: {
             productId: { in: ids },
+            ...genuineOrderScope,
             status: { notIn: ['cancelled', 'rejected'] },
           },
           _count: { _all: true },

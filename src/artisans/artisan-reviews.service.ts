@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
+import { genuineArtisanReviewScope } from '../common/genuine-data';
 
 @Injectable()
 export class ArtisanReviewsService {
@@ -54,13 +55,15 @@ export class ArtisanReviewsService {
 
     const [items, totalItems] = await Promise.all([
       this.prisma.artisanReview.findMany({
-        where: { artisanId },
+        where: { artisanId, ...genuineArtisanReviewScope },
         include: { customer: { select: { name: true } } },
         orderBy: { updatedAt: 'desc' },
         skip,
         take: pageSize,
       }),
-      this.prisma.artisanReview.count({ where: { artisanId } }),
+      this.prisma.artisanReview.count({
+        where: { artisanId, ...genuineArtisanReviewScope },
+      }),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));

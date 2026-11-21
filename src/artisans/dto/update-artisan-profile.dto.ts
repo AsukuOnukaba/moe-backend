@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
 } from 'class-validator';
 import { toStringList } from '../../common/string-list';
 
@@ -127,6 +128,26 @@ export class UpdateArtisanProfileDto {
   installmentDetails?: string | null;
 
   @IsOptional()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  websiteUrl?: string | null;
+
+  @IsOptional()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  instagramUrl?: string | null;
+
+  @IsOptional()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  facebookUrl?: string | null;
+
+  @IsOptional()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  xUrl?: string | null;
+
+  @IsOptional()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  linkedinUrl?: string | null;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   keywords?: string[];
@@ -139,4 +160,3 @@ export class UpdateArtisanProfileDto {
   @IsString()
   metaDescription?: string | null;
 }
-

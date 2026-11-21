@@ -1,5 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import type { AccessTokenPayload } from '../auth/types/jwt-payload';
+import {
+  cloudinaryPublicId,
+  cloudinaryResourceType,
+  messageAttachmentKind,
+} from '../upload/multer.config';
+import { signedAuthenticatedUrl } from '../upload/cloudinary';
 
 @Injectable()
 export class SupportService {
@@ -119,6 +131,213 @@ export class SupportService {
         totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
         totalItems,
       },
+    };
+  }
+
+  async createOrderComplaint(
+    user: AccessTokenPayload,
+    body: {
+      orderId?: string | number;
+      category?: string;
+      description?: string;
+      durationMs?: string | number;
+    },
+    files: Express.Multer.File[] = [],
+  ) {
+    if (user.role !== 'artisan') {
+      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    const orderId = Number(body.orderId);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      throw new BadRequestException({
+        message: 'A valid order reference is required',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order || order.providerId !== user.sub) {
+      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    const category = body.category?.trim();
+    const description = body.description?.trim();
+    if (!category || !description || description.length < 10) {
+      throw new BadRequestException({
+        message: 'Complaint category and a description of at least 10 characters are required',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+    const submitter = await this.prisma.user.findUniqueOrThrow({
+      where: { id: user.sub },
+      select: { name: true, email: true },
+    });
+    const durationMs = Number(body.durationMs);
+    const ticket = await this.prisma.contactMessage.create({
+      data: {
+        senderName: submitter.name,
+        senderEmail: submitter.email,
+        message: description,
+        subject: `Order #${orderId}: ${category}`,
+        source: 'order_complaint',
+        submittedById: user.sub,
+        orderId,
+        category,
+        status: 'open',
+        attachments: {
+          create: files.map((file) => {
+            const kind = messageAttachmentKind(file.mimetype);
+            return {
+              attachmentPublicId: cloudinaryPublicId(file),
+              attachmentResourceType: cloudinaryResourceType(file, file.mimetype),
+              attachmentName: file.originalname || 'supporting-file',
+              attachmentMimeType: file.mimetype || 'application/octet-stream',
+              attachmentBytes: file.size ?? null,
+              attachmentKind: kind,
+              durationMs:
+                kind === 'voice' && Number.isFinite(durationMs)
+                  ? Math.max(0, Math.round(durationMs))
+                  : null,
+            };
+          }),
+        },
+        events: {
+          create: {
+            actorId: user.sub,
+            status: 'open',
+            note: 'Complaint submitted',
+          },
+        },
+      },
+      include: { attachments: true, events: true },
+    });
+    return this.toOrderComplaint(ticket);
+  }
+
+  async listOrderComplaints(user: AccessTokenPayload, orderId?: string) {
+    if (user.role !== 'artisan') {
+      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    const parsedOrderId = orderId ? Number(orderId) : undefined;
+    const rows = await this.prisma.contactMessage.findMany({
+      where: {
+        source: 'order_complaint',
+        submittedById: user.sub,
+        ...(Number.isInteger(parsedOrderId) ? { orderId: parsedOrderId } : {}),
+      },
+      include: {
+        attachments: { orderBy: { createdAt: 'asc' } },
+        events: { orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((row) => this.toOrderComplaint(row));
+  }
+
+  async getOrderComplaintAttachment(
+    user: AccessTokenPayload,
+    ticketId: number,
+    attachmentId: number,
+  ) {
+    const attachment = await this.prisma.supportTicketAttachment.findFirst({
+      where: { id: attachmentId, ticketId },
+      include: { ticket: { include: { order: true } } },
+    });
+    if (!attachment) {
+      throw new NotFoundException({ message: 'Attachment not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+    const allowed =
+      user.role === 'admin' ||
+      attachment.ticket.submittedById === user.sub ||
+      attachment.ticket.order?.providerId === user.sub;
+    if (!allowed) {
+      throw new ForbiddenException({ message: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    return signedAuthenticatedUrl(
+      attachment.attachmentPublicId,
+      attachment.attachmentResourceType,
+      120,
+    );
+  }
+
+  async updateOrderComplaintStatus(
+    admin: AccessTokenPayload,
+    ticketId: number,
+    body: { status?: string; note?: string },
+  ) {
+    const allowed = ['open', 'in_review', 'awaiting_artisan', 'resolved', 'closed'];
+    const status = body.status?.trim();
+    if (!status || !allowed.includes(status)) {
+      throw new BadRequestException({ message: 'Invalid complaint status', code: 'VALIDATION_ERROR' });
+    }
+    const existing = await this.prisma.contactMessage.findFirst({
+      where: { id: ticketId, source: 'order_complaint' },
+    });
+    if (!existing) {
+      throw new NotFoundException({ message: 'Complaint not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await tx.supportTicketEvent.create({
+        data: { ticketId, actorId: admin.sub, status, note: body.note?.trim() || null },
+      });
+      const updated = await tx.contactMessage.update({
+        where: { id: ticketId },
+        data: { status, isRead: true },
+        include: {
+          attachments: { orderBy: { createdAt: 'asc' } },
+          events: { orderBy: { createdAt: 'asc' } },
+        },
+      });
+      return this.toOrderComplaint(updated);
+    });
+  }
+
+  private toOrderComplaint(ticket: {
+    id: number;
+    orderId: number | null;
+    category: string | null;
+    subject: string | null;
+    message: string;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+    attachments: Array<{
+      id: number;
+      attachmentName: string;
+      attachmentMimeType: string;
+      attachmentBytes: number | null;
+      attachmentKind: string;
+      durationMs: number | null;
+    }>;
+    events: Array<{
+      id: number;
+      status: string;
+      note: string | null;
+      createdAt: Date;
+    }>;
+  }) {
+    return {
+      id: ticket.id,
+      orderId: ticket.orderId,
+      category: ticket.category,
+      subject: ticket.subject,
+      description: ticket.message,
+      status: ticket.status,
+      createdAt: ticket.createdAt.toISOString(),
+      updatedAt: ticket.updatedAt.toISOString(),
+      attachments: ticket.attachments.map((attachment) => ({
+        id: attachment.id,
+        name: attachment.attachmentName,
+        mimeType: attachment.attachmentMimeType,
+        bytes: attachment.attachmentBytes,
+        kind: attachment.attachmentKind,
+        durationMs: attachment.durationMs,
+        url: `/support/tickets/order-complaints/${ticket.id}/attachments/${attachment.id}`,
+      })),
+      history: ticket.events.map((event) => ({
+        id: event.id,
+        status: event.status,
+        note: event.note,
+        createdAt: event.createdAt.toISOString(),
+      })),
     };
   }
 }

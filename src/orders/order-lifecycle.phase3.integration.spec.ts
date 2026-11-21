@@ -195,7 +195,7 @@ describe('Phase 3 order lifecycle (PostgreSQL)', () => {
     const caps = new AdminCapabilitiesService(prismaSvc, config());
     const cfg = config({
       INITIAL_PAYOUT_LIMITS_JSON: '{"NGN":{"maxAbsolute":50000}}',
-      CUSTOMER_DELIVERY_REVIEW_HOURS: '48',
+      CUSTOMER_DELIVERY_REVIEW_HOURS: '72',
     });
     payouts = new ArtisanPayoutService(
       prismaSvc,
@@ -482,7 +482,7 @@ describe('Phase 3 order lifecycle (PostgreSQL)', () => {
     expect(row.customerReviewDeadline).not.toBeNull();
     const deadlineMs = row.customerReviewDeadline!.getTime();
     const deliveredMs = row.deliveredAt!.getTime();
-    expect(deadlineMs - deliveredMs).toBeCloseTo(48 * 60 * 60 * 1000, -3);
+    expect(deadlineMs - deliveredMs).toBeCloseTo(72 * 60 * 60 * 1000, -3);
 
     // Final payout blocked before acceptance / eligibility
     await milestones.setTotalPayable(recorder(), orderId, {

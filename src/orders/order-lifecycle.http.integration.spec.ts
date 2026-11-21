@@ -8,6 +8,10 @@ import { PAYOUT_CAPABILITIES } from './payout.constants';
 
 const API = (process.env.API_BASE || 'http://127.0.0.1:3000').replace(/\/$/, '');
 const TAG = `phase4b-http-${Date.now()}`;
+// CI/local safety mode keeps the lifecycle HTTP-backed while seeding private
+// evidence metadata directly, so verification never writes test blobs to a
+// shared Cloudinary account. Default mode retains multipart upload coverage.
+const NO_EXTERNAL_STORAGE = process.env.LOCAL_HTTP_NO_STORAGE === '1';
 
 function dbUrl() {
   const base =
@@ -237,8 +241,10 @@ describe('Phase 4B real HTTP order lifecycle (Nest + PostgreSQL)', () => {
         matchesCustomerRequirements: true,
       }),
     );
-    const blob = new Blob([Buffer.from('fake-jpg')], { type: 'image/jpeg' });
-    form.append('files', blob, 'readiness.jpg');
+    if (!NO_EXTERNAL_STORAGE) {
+      const blob = new Blob([Buffer.from('fake-jpg')], { type: 'image/jpeg' });
+      form.append('files', blob, 'readiness.jpg');
+    }
 
     const submitted = await api('POST', `/orders/${orderId}/readiness/assessments`, {
       token: artisanToken,
@@ -282,11 +288,13 @@ describe('Phase 4B real HTTP order lifecycle (Nest + PostgreSQL)', () => {
     transferForm.append('payeeName', `${TAG} Studio`);
     transferForm.append('payeeDetails', 'GTBank ****1111');
     transferForm.append('externalReference', `${TAG}-init-${orderId}`);
-    transferForm.append(
-      'files',
-      new Blob([Buffer.from('receipt')], { type: 'image/png' }),
-      'receipt.png',
-    );
+    if (!NO_EXTERNAL_STORAGE) {
+      transferForm.append(
+        'files',
+        new Blob([Buffer.from('receipt')], { type: 'image/png' }),
+        'receipt.png',
+      );
+    }
     const recorded = await api('POST', `/admin/orders/${orderId}/artisan-payout/transfers`, {
       token: recorderToken,
       form: transferForm,
@@ -313,6 +321,22 @@ describe('Phase 4B real HTTP order lifecycle (Nest + PostgreSQL)', () => {
       token: artisanToken,
     });
     expect(earlyStart.ok).toBe(false);
+
+    if (NO_EXTERNAL_STORAGE) {
+      await prisma.$connect();
+      await prisma.orderArtisanPayoutEvidence.create({
+        data: {
+          transferId,
+          attachmentPublicId: `${TAG}/receipt`,
+          attachmentResourceType: 'image',
+          attachmentName: 'receipt.png',
+          attachmentMimeType: 'image/png',
+          attachmentBytes: 7,
+          attachmentKind: 'image',
+        },
+      });
+      await prisma.$disconnect();
+    }
 
     const verified = await api(
       'POST',
@@ -366,20 +390,50 @@ describe('Phase 4B real HTTP order lifecycle (Nest + PostgreSQL)', () => {
     expect(deadline).toBeTruthy();
 
     // 5) Quality submission + admin approve (must not auto-release funds)
-    const qForm = new FormData();
-    qForm.append('description', 'Completed custom piece');
-    qForm.append('specsConfirmed', 'true');
-    qForm.append(
-      'files',
-      new Blob([Buffer.from('final')], { type: 'image/jpeg' }),
-      'final.jpg',
-    );
-    const qSubmit = await api('POST', `/orders/${orderId}/quality/submissions`, {
-      token: artisanToken,
-      form: qForm,
-    });
-    expect(qSubmit.ok).toBe(true);
-    const submissionId = (qSubmit.data as { id: number }).id;
+    let submissionId: number;
+    if (NO_EXTERNAL_STORAGE) {
+      await prisma.$connect();
+      const seeded = await prisma.orderQualitySubmission.create({
+        data: {
+          orderId,
+          version: 1,
+          artisanId,
+          status: 'submitted',
+          description: 'Completed custom piece',
+          specsConfirmed: true,
+          evidence: {
+            create: {
+              attachmentPublicId: `${TAG}/final`,
+              attachmentResourceType: 'image',
+              attachmentName: 'final.jpg',
+              attachmentMimeType: 'image/jpeg',
+              attachmentBytes: 5,
+              attachmentKind: 'image',
+            },
+          },
+        },
+      });
+      submissionId = seeded.id;
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { qualityReviewStatus: 'submitted', qualitySubmittedAt: new Date() },
+      });
+    } else {
+      const qForm = new FormData();
+      qForm.append('description', 'Completed custom piece');
+      qForm.append('specsConfirmed', 'true');
+      qForm.append(
+        'files',
+        new Blob([Buffer.from('final')], { type: 'image/jpeg' }),
+        'final.jpg',
+      );
+      const qSubmit = await api('POST', `/orders/${orderId}/quality/submissions`, {
+        token: artisanToken,
+        form: qForm,
+      });
+      expect(qSubmit.ok).toBe(true);
+      submissionId = (qSubmit.data as { id: number }).id;
+    }
 
     const payoutBefore = await prisma.orderArtisanPayout.findUnique({
       where: { orderId },

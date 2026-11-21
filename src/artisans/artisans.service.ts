@@ -87,6 +87,11 @@ export class ArtisansService {
       isCustomOrderEligible: artisanProfile.isCustomOrderEligible ?? artisanProfile.customOrdersEnabled ?? false,
       rushOrderEnabled: artisanProfile.rushOrderEnabled ?? false,
       rushOrderSurchargePercent: artisanProfile.rushOrderSurchargePercent ?? 25,
+      websiteUrl: artisanProfile.websiteUrl ?? null,
+      instagramUrl: artisanProfile.instagramUrl ?? null,
+      facebookUrl: artisanProfile.facebookUrl ?? null,
+      xUrl: artisanProfile.xUrl ?? null,
+      linkedinUrl: artisanProfile.linkedinUrl ?? null,
       status: artisanProfile.status ?? 'pending',
       category: artisanProfile.category ?? null,
       styleTags: asArrayFromComma(artisanProfile.styleTags),
@@ -113,6 +118,11 @@ export class ArtisansService {
         storeImageUrl: dto.storeImageUrl ?? null,
         country: dto.country ?? undefined,
         address: dto.address ?? undefined,
+        websiteUrl: dto.websiteUrl ?? undefined,
+        instagramUrl: dto.instagramUrl ?? undefined,
+        facebookUrl: dto.facebookUrl ?? undefined,
+        xUrl: dto.xUrl ?? undefined,
+        linkedinUrl: dto.linkedinUrl ?? undefined,
         ...(dto.serviceCategories !== undefined
           ? { serviceCategories: toStringList(dto.serviceCategories) }
           : {}),
@@ -145,6 +155,11 @@ export class ArtisansService {
         ...(dto.images !== undefined && dto.images !== null
           ? { images: dto.images }
           : {}),
+        ...(dto.websiteUrl !== undefined ? { websiteUrl: dto.websiteUrl } : {}),
+        ...(dto.instagramUrl !== undefined ? { instagramUrl: dto.instagramUrl } : {}),
+        ...(dto.facebookUrl !== undefined ? { facebookUrl: dto.facebookUrl } : {}),
+        ...(dto.xUrl !== undefined ? { xUrl: dto.xUrl } : {}),
+        ...(dto.linkedinUrl !== undefined ? { linkedinUrl: dto.linkedinUrl } : {}),
         ...(dto.customOrdersEnabled !== undefined
           ? { customOrdersEnabled: dto.customOrdersEnabled }
           : {}),
@@ -198,6 +213,11 @@ export class ArtisansService {
       isCustomOrderEligible: upserted.isCustomOrderEligible ?? upserted.customOrdersEnabled ?? false,
       rushOrderEnabled: upserted.rushOrderEnabled ?? false,
       rushOrderSurchargePercent: upserted.rushOrderSurchargePercent ?? 25,
+      websiteUrl: upserted.websiteUrl ?? null,
+      instagramUrl: upserted.instagramUrl ?? null,
+      facebookUrl: upserted.facebookUrl ?? null,
+      xUrl: upserted.xUrl ?? null,
+      linkedinUrl: upserted.linkedinUrl ?? null,
       status: upserted.status ?? 'pending',
       category: upserted.category ?? null,
       styleTags: asArrayFromComma(upserted.styleTags),
@@ -450,6 +470,11 @@ export class ArtisansService {
       state?: string;
       city?: string;
       isCustomOrderEligible?: boolean;
+      websiteUrl?: string | null;
+      instagramUrl?: string | null;
+      facebookUrl?: string | null;
+      xUrl?: string | null;
+      linkedinUrl?: string | null;
       sort?: string;
     },
   ) {
@@ -663,6 +688,11 @@ export class ArtisansService {
       featured: boolean;
       customOrdersEnabled?: boolean;
       isCustomOrderEligible?: boolean;
+      websiteUrl?: string | null;
+      instagramUrl?: string | null;
+      facebookUrl?: string | null;
+      xUrl?: string | null;
+      linkedinUrl?: string | null;
       metaTitle?: string | null;
       metaDescription?: string | null;
       keywords?: { keyword: { term: string } }[];
@@ -705,6 +735,11 @@ export class ArtisansService {
       // Public: eligibility only — never approvedBy/approvedAt / scores / ranks.
       isCustomOrderEligible:
         a.isCustomOrderEligible ?? a.customOrdersEnabled ?? false,
+      websiteUrl: a.websiteUrl ?? null,
+      instagramUrl: a.instagramUrl ?? null,
+      facebookUrl: a.facebookUrl ?? null,
+      xUrl: a.xUrl ?? null,
+      linkedinUrl: a.linkedinUrl ?? null,
       metaTitle: a.metaTitle ?? null,
       metaDescription: a.metaDescription ?? null,
       keywords: (a.keywords ?? []).map((k) => ({ term: k.keyword.term })),

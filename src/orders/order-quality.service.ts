@@ -746,7 +746,10 @@ export class OrderQualityService {
 
     const due = await this.prisma.order.findMany({
       where: {
-        fulfillmentStatus: 'delivered',
+        // A customer dispute changes the fulfillment sub-status. Keep it in the
+        // review-window scan so it is escalated instead of silently falling out
+        // of scheduler processing.
+        fulfillmentStatus: { in: ['delivered', 'delivery_disputed'] },
         customerAcceptedAt: null,
         customerReviewDeadline: { lte: now },
         finalPayoutReviewEligible: false,
@@ -775,7 +778,7 @@ export class OrderQualityService {
             id: order.id,
             finalPayoutReviewEligible: false,
             finalPayoutEscalatedAt: null,
-            fulfillmentStatus: 'delivered',
+            fulfillmentStatus: { in: ['delivered', 'delivery_disputed'] },
             customerAcceptedAt: null,
           },
           data: { finalPayoutReviewEligible: true },
@@ -800,7 +803,7 @@ export class OrderQualityService {
             id: order.id,
             finalPayoutReviewEligible: false,
             finalPayoutEscalatedAt: null,
-            fulfillmentStatus: 'delivered',
+            fulfillmentStatus: { in: ['delivered', 'delivery_disputed'] },
             customerAcceptedAt: null,
           },
           data: { finalPayoutEscalatedAt: now },

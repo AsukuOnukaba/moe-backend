@@ -120,6 +120,31 @@ class EnvVars {
   @IsString()
   PAYMENT_LIVE_ENABLED?: string;
 
+  /** Hours after recorded delivery before an unreviewed order is escalated. */
+  @IsOptional()
+  @IsString()
+  CUSTOMER_DELIVERY_REVIEW_HOURS?: string;
+
+  /** Enable cron handlers only on the elected scheduler instance. */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  ORDER_SCHEDULERS_ENABLED?: 'true' | 'false';
+
+  /** IANA timezone used by order schedulers. */
+  @IsOptional()
+  @IsString()
+  APP_TIMEZONE?: string;
+
+  /** Optional emergency bootstrap only; prefer per-user adminCapabilities. */
+  @IsOptional()
+  @IsString()
+  ADMIN_PAYOUT_FINANCE_USER_IDS?: string;
+
+  /** Per-currency initial payout controls consumed by ArtisanPayoutService. */
+  @IsOptional()
+  @IsString()
+  INITIAL_PAYOUT_LIMITS_JSON?: string;
+
   /** Paystack secret key. Test keys start with sk_test_. Server-side only. */
   @IsOptional()
   @IsString()

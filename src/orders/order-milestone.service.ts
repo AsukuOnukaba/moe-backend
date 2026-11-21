@@ -317,14 +317,19 @@ export class OrderMilestoneService {
     }
 
     if (milestone.kind === 'final') {
+      const openDisputes = await this.prisma.dispute.count({
+        where: { orderId, status: 'open' },
+      });
       if (
         order.qualityReviewStatus !== 'approved' ||
         (!order.finalPayoutReviewEligible &&
-          order.fulfillmentStatus !== 'customer_accepted')
+          order.fulfillmentStatus !== 'customer_accepted') ||
+        openDisputes > 0 ||
+        ['disputed', 'reversed'].includes(order.artisanPayout.status)
       ) {
         throw new BadRequestException({
           message:
-            'Final milestone requires quality approval and delivery acceptance / final payout eligibility',
+            'Final milestone requires quality approval, delivery acceptance / eligibility, and no open payout or order dispute',
           code: 'FINAL_MILESTONE_NOT_ELIGIBLE',
         });
       }
@@ -373,6 +378,23 @@ export class OrderMilestoneService {
         message: 'Milestone not found',
         code: 'RESOURCE_NOT_FOUND',
       });
+    }
+    if (['disputed', 'reversed'].includes(payout.status)) {
+      throw new BadRequestException({
+        message: 'Transfers are blocked while the artisan payout is disputed or reversed',
+        code: 'PAYOUT_RELEASE_BLOCKED',
+      });
+    }
+    if (milestone.kind === 'final') {
+      const openDisputes = await this.prisma.dispute.count({
+        where: { orderId, status: 'open' },
+      });
+      if (openDisputes > 0) {
+        throw new BadRequestException({
+          message: 'Final transfer is blocked while an order dispute remains open',
+          code: 'PAYOUT_RELEASE_BLOCKED',
+        });
+      }
     }
     if (!['eligible', 'amount_approved', 'recorded', 'verified'].includes(milestone.status)) {
       throw new BadRequestException({
@@ -484,6 +506,23 @@ export class OrderMilestoneService {
         message: 'Milestone transfer not found',
         code: 'RESOURCE_NOT_FOUND',
       });
+    }
+    if (['disputed', 'reversed'].includes(transfer.payout.status)) {
+      throw new BadRequestException({
+        message: 'Transfer verification is blocked while the artisan payout is disputed or reversed',
+        code: 'PAYOUT_RELEASE_BLOCKED',
+      });
+    }
+    if (transfer.milestone.kind === 'final') {
+      const openDisputes = await this.prisma.dispute.count({
+        where: { orderId, status: 'open' },
+      });
+      if (openDisputes > 0) {
+        throw new BadRequestException({
+          message: 'Final transfer verification is blocked while an order dispute remains open',
+          code: 'PAYOUT_RELEASE_BLOCKED',
+        });
+      }
     }
     if (transfer.recordedById === admin.sub) {
       throw new BadRequestException({

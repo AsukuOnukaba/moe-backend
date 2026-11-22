@@ -21,6 +21,7 @@ import {
 import { NEW_ORDERS_READINESS_STATUSES } from './readiness.constants';
 import { OrderReadinessService } from './order-readiness.service';
 import { ArtisanPayoutService } from './artisan-payout.service';
+import { resolveSizingSelection } from '../common/product-sizing-selection';
 
 type ShippingAddress = {
   firstName: string;
@@ -712,6 +713,11 @@ export class OrdersService {
       (first.selectedBodyType as string | undefined) ??
       (selectedVariations.body_type as string | undefined) ??
       null;
+    const selectedSizing = await resolveSizingSelection(
+      this.prisma,
+      product.id,
+      first.selectedSizing,
+    );
     const baseCustomisation = customisationLooksLikeVariations
       ? null
       : rawCustomisation;
@@ -720,6 +726,7 @@ export class OrdersService {
       Object.keys(selectedVariations).length > 0 ||
       selectedBodyType ||
       first.selectedSize
+      || selectedSizing
         ? {
             ...(baseCustomisation ?? {}),
             ...(Object.keys(selectedVariations).length
@@ -727,6 +734,14 @@ export class OrdersService {
               : {}),
             ...(selectedBodyType ? { selectedBodyType } : {}),
             ...(first.selectedSize ? { selectedSize: first.selectedSize } : {}),
+            ...(selectedSizing
+              ? {
+                  selectedSizing,
+                  selectedSize: selectedSizing.size?.label ?? first.selectedSize ?? null,
+                  selectedBodyType:
+                    selectedSizing.fitChoice?.label ?? selectedBodyType ?? null,
+                }
+              : {}),
           }
         : null;
 

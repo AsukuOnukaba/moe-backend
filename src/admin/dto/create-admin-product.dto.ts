@@ -14,6 +14,7 @@ import {
 import { PRODUCT_CATEGORIES } from '../../common/product-categories';
 import { VariationTypeInputDto } from '../../artisans/dto/product-variation.dto';
 import { PRODUCT_AUDIENCES } from '../../products/product-audience';
+import { ProductSizeProfileInputDto } from '../../artisans/dto/product-sizing.dto';
 
 export class CreateAdminProductDto {
   @IsInt()
@@ -85,4 +86,10 @@ export class CreateAdminProductDto {
   @ValidateNested({ each: true })
   @Type(() => VariationTypeInputDto)
   variationTypes?: VariationTypeInputDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductSizeProfileInputDto)
+  sizeProfiles?: ProductSizeProfileInputDto[];
 }

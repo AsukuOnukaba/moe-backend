@@ -12,6 +12,7 @@ import { ArtisanVerificationService } from '../artisans/artisan-verification.ser
 import { normalizeProductCategory } from '../common/product-categories';
 import { toStringList } from '../common/string-list';
 import { ProductVariationsService } from '../artisans/product-variations.service';
+import { ProductSizingService, validateSizeProfiles } from '../artisans/product-sizing.service';
 import {
   genuineArtisanReviewScope,
   genuineOrderScope,
@@ -19,6 +20,7 @@ import {
 } from '../common/genuine-data';
 import type { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import type { CreateAdminProductDto } from './dto/create-admin-product.dto';
+import type { ProductSizeProfileInputDto } from '../artisans/dto/product-sizing.dto';
 import {
   AUDIENCE_REQUIRED_CATEGORIES,
   inferAudienceSuggestion,
@@ -36,6 +38,7 @@ export class AdminService {
     private readonly email: EmailService,
     private readonly verification: ArtisanVerificationService,
     private readonly variations: ProductVariationsService,
+    private readonly sizing: ProductSizingService,
   ) {}
 
   private splitCustomerName(fullName: string) {
@@ -361,6 +364,15 @@ export class AdminService {
         code: 'PRODUCT_AUDIENCE_REQUIRED',
       });
     }
+    const hasStandardSizeVariation = (dto.variationTypes ?? []).some(
+      (type) => type.isEnabled !== false && ['size', 'shoe_size'].includes(type.typeName),
+    );
+    validateSizeProfiles(
+      category,
+      designedFor,
+      dto.sizeProfiles,
+      dto.sizeProfiles !== undefined || hasStandardSizeVariation,
+    );
 
     const created = await this.prisma.product.create({
       data: {
@@ -388,11 +400,15 @@ export class AdminService {
     if (Array.isArray(dto.variationTypes) && dto.variationTypes.length > 0) {
       await this.variations.replaceForProduct(created.id, dto.variationTypes);
     }
+    if (Array.isArray(dto.sizeProfiles)) {
+      await this.sizing.replaceForProduct(created.id, dto.sizeProfiles);
+    }
 
     const withRelations = await this.prisma.product.findUnique({
       where: { id: created.id },
       include: {
         variationTypes: { include: { options: true } },
+        sizeProfiles: { include: { sizes: true, fitChoices: true } },
       },
     });
 
@@ -773,7 +789,11 @@ export class AdminService {
   async getProduct(id: number) {
     const product = await this.prisma.product.findFirst({
       where: { id, ...activeProductWhere },
-      include: { provider: { include: { artisanProfile: true } } },
+      include: {
+        provider: { include: { artisanProfile: true } },
+        variationTypes: { include: { options: true } },
+        sizeProfiles: { include: { sizes: true, fitChoices: true } },
+      },
     });
     if (!product) {
       throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
@@ -827,6 +847,45 @@ export class AdminService {
       },
     });
     return productToDto(updated);
+  }
+
+  async updateProductSizing(
+    id: number,
+    designedForInput: string[],
+    sizeProfiles: ProductSizeProfileInputDto[],
+    adminUserId: number,
+  ) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, ...activeProductWhere },
+    });
+    if (!product) {
+      throw new NotFoundException({ message: 'Not found', code: 'RESOURCE_NOT_FOUND' });
+    }
+    const designedFor = normalizeProductAudiences(designedForInput);
+    if (requiresAudienceClassification(product.category) && designedFor.length === 0) {
+      throw new BadRequestException({ message: 'Select at least one audience for this product', code: 'PRODUCT_AUDIENCE_REQUIRED' });
+    }
+    validateSizeProfiles(product.category, designedFor, sizeProfiles, true);
+    await this.prisma.product.update({
+      where: { id },
+      data: {
+        designedFor,
+        audienceClassificationStatus: 'classified',
+        audienceClassifiedAt: new Date(),
+        audienceClassifiedById: adminUserId,
+      },
+    });
+    await this.sizing.replaceForProduct(id, sizeProfiles);
+    await this.prisma.adminAuditLog.create({
+      data: {
+        action: 'product_sizing_updated',
+        adminUserId,
+        targetType: 'product',
+        targetId: id,
+        metadata: { designedFor, profileCount: sizeProfiles.length },
+      },
+    });
+    return this.getProduct(id);
   }
 
   async bulkUpdateProductAudience(

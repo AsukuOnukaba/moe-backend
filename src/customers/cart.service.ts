@@ -3,6 +3,7 @@ import { activeProductWhere } from '../common/active-product';
 import { PrismaService } from '../database/prisma.service';
 import { randomUUID } from 'crypto';
 import type { AccessTokenPayload } from '../auth/types/jwt-payload';
+import { resolveSizingSelection, type SizingSelectionSnapshot } from '../common/product-sizing-selection';
 
 type CartItem = {
   id: string;
@@ -13,8 +14,9 @@ type CartItem = {
   basePrice: number;
   finalPrice: number;
   category: string;
-  selectedSize: string;
+  selectedSize: string | null;
   selectedBodyType: string | null;
+  selectedSizing: SizingSelectionSnapshot | null;
   selectedVariants: Record<string, unknown>;
   measurements: Record<string, unknown>;
   customisation: Record<string, unknown> | null;
@@ -94,6 +96,11 @@ export class CartService {
 
     const basePrice = typeof body?.basePrice === 'number' ? body.basePrice : (p.price ?? 0);
     const finalPrice = typeof body?.finalPrice === 'number' ? body.finalPrice : basePrice;
+    const selectedSizing = await resolveSizingSelection(
+      this.prisma,
+      p.id,
+      body.selectedSizing as Record<string, unknown> | undefined,
+    );
 
     const item: CartItem = {
       id: randomUUID(),
@@ -104,8 +111,11 @@ export class CartService {
       basePrice,
       finalPrice,
       category: p.category ?? '',
-      selectedSize: typeof body?.selectedSize === 'string' ? body.selectedSize : 'M',
+      selectedSize:
+        selectedSizing?.size?.label ??
+        (typeof body?.selectedSize === 'string' ? body.selectedSize : null),
       selectedBodyType:
+        selectedSizing?.fitChoice?.label ??
         (body?.selectedBodyType as string | null) ??
         ((body?.selectedVariations as Record<string, unknown> | undefined)?.body_type as
           | string
@@ -116,6 +126,7 @@ export class CartService {
           | null
           | undefined) ??
         null,
+      selectedSizing,
       selectedVariants: {
         ...((body?.selectedVariants as Record<string, unknown>) ?? {}),
         ...((body?.selectedVariations as Record<string, unknown>) ?? {}),
@@ -153,6 +164,7 @@ export class CartService {
         body?.selectedBodyType !== undefined
           ? (body.selectedBodyType as string | null)
           : item.selectedBodyType,
+      selectedSizing: item.selectedSizing,
     };
 
     return cart[idx];

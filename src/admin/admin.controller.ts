@@ -29,6 +29,7 @@ import { BulkDeleteCategoriesDto } from './dto/bulk-delete-categories.dto';
 import { BulkDeleteConversationsDto } from './dto/bulk-delete-conversations.dto';
 import { CreateAdminArtisanDto } from './dto/create-admin-artisan.dto';
 import { CreateAdminProductDto } from './dto/create-admin-product.dto';
+import { UpdateProductSizingDto } from './dto/update-product-sizing.dto';
 import { UpdateProductAudienceDto } from './dto/update-product-audience.dto';
 import { BulkUpdateProductAudienceDto } from './dto/bulk-update-product-audience.dto';
 import { CustomOrdersService } from '../custom-orders/custom-orders.service';
@@ -202,6 +203,16 @@ export class AdminController {
   ) {
     const user = req.user as AccessTokenPayload;
     return this.admin.updateProductAudience(id, body.designedFor, user.sub);
+  }
+
+  @Patch('products/:id/sizing')
+  updateProductSizing(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateProductSizingDto,
+  ) {
+    const user = req.user as AccessTokenPayload;
+    return this.admin.updateProductSizing(id, body.designedFor, body.sizeProfiles, user.sub);
   }
 
   @Post('products/classification/bulk-approve')

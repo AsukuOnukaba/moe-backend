@@ -71,6 +71,7 @@ export function productToDto(p: {
   updatedAt?: Date | string | null;
   keywords?: { keyword: { term: string } }[] | { term: string }[];
   variationTypes?: any[];
+  sizeProfiles?: any[];
 }) {
   const createdAt = toIsoTimestamp(p.createdAt);
   const updatedAt = toIsoTimestamp(p.updatedAt);
@@ -136,6 +137,49 @@ export function productToDto(p: {
                   })
               : [],
           })),
+        }
+      : {}),
+    ...(Array.isArray(p.sizeProfiles)
+      ? {
+          sizeProfiles: [...p.sizeProfiles]
+            .sort((a: any, b: any) => String(a.audience).localeCompare(String(b.audience)))
+            .map((profile: any) => ({
+              id: profile.id,
+              audience: profile.audience,
+              productType: profile.productType,
+              sizingSystem: profile.sizingSystem,
+              unit: profile.unit,
+              measurementDefinitions: Array.isArray(profile.measurementDefinitions)
+                ? profile.measurementDefinitions
+                : [],
+              isMadeToMeasure: profile.isMadeToMeasure === true,
+              instructions: profile.instructions ?? null,
+              illustrationUrl: profile.illustrationUrl ?? null,
+              version: profile.version ?? 1,
+              sizes: Array.isArray(profile.sizes)
+                ? [...profile.sizes]
+                    .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+                    .map((size: any) => ({
+                      id: size.id,
+                      label: size.label,
+                      measurements: size.measurements ?? {},
+                      position: size.position ?? 0,
+                    }))
+                : [],
+              fitChoices: Array.isArray(profile.fitChoices)
+                ? [...profile.fitChoices]
+                    .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+                    .map((fit: any) => ({
+                      id: fit.id,
+                      label: fit.label,
+                      description: fit.description,
+                      illustrationUrl: fit.illustrationUrl ?? null,
+                      position: fit.position ?? 0,
+                    }))
+                : [],
+              createdAt: toIsoTimestamp(profile.createdAt),
+              updatedAt: toIsoTimestamp(profile.updatedAt),
+            })),
         }
       : {}),
   };

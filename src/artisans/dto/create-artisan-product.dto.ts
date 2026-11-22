@@ -18,6 +18,7 @@ import { PRODUCT_CATEGORIES } from '../../common/product-categories';
 import { ValidatePriceRange } from '../../common/validators/price-range.validator';
 import { VariationTypeInputDto } from './product-variation.dto';
 import { PRODUCT_AUDIENCES } from '../../products/product-audience';
+import { ProductSizeProfileInputDto } from './product-sizing.dto';
 
 export class CreateArtisanProductDto {
   @IsString()
@@ -137,4 +138,10 @@ export class CreateArtisanProductDto {
   @ValidateNested({ each: true })
   @Type(() => VariationTypeInputDto)
   variationTypes?: VariationTypeInputDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductSizeProfileInputDto)
+  sizeProfiles?: ProductSizeProfileInputDto[];
 }

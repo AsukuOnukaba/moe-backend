@@ -115,6 +115,15 @@ export class CheckoutOrderItemDto {
   @IsOptional()
   @IsString()
   selectedSize?: string;
+
+  @IsOptional()
+  @IsObject()
+  selectedSizing?: {
+    audience?: string;
+    profileId?: string;
+    sizeId?: string;
+    fitChoiceId?: string;
+  };
 }
 
 export class CreateOrderDto {

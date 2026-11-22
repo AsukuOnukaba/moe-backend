@@ -12,6 +12,7 @@ import { UpdateArtisanProfileDto } from './dto/update-artisan-profile.dto';
 import { CreateArtisanProductDto } from './dto/create-artisan-product.dto';
 import { UpdateArtisanProductDto } from './dto/update-artisan-product.dto';
 import { ProductVariationsService } from './product-variations.service';
+import { ProductSizingService, validateSizeProfiles } from './product-sizing.service';
 import { productToDto } from '../common/product-mapper';
 import { normalizeProductCategory } from '../common/product-categories';
 import { mergeServiceCategoryNames, SERVICE_CATEGORIES } from '../common/service-categories';
@@ -34,6 +35,7 @@ export class ArtisansService {
     private readonly config: ConfigService,
     private readonly keywords: KeywordsService,
     private readonly variations: ProductVariationsService,
+    private readonly sizing: ProductSizingService,
   ) {}
 
   private requireArtisan(user: AccessTokenPayload) {
@@ -245,7 +247,10 @@ export class ArtisansService {
       orderBy: { updatedAt: 'desc' },
       skip: (safePage - 1) * safePageSize,
       take: safePageSize,
-      include: { variationTypes: { include: { options: true } } },
+      include: {
+        variationTypes: { include: { options: true } },
+        sizeProfiles: { include: { sizes: true, fitChoices: true } },
+      },
     });
 
     return {
@@ -269,6 +274,15 @@ export class ArtisansService {
         code: 'PRODUCT_AUDIENCE_REQUIRED',
       });
     }
+    const hasStandardSizeVariation = (dto.variationTypes ?? []).some(
+      (type) => type.isEnabled !== false && ['size', 'shoe_size'].includes(type.typeName),
+    );
+    validateSizeProfiles(
+      category,
+      designedFor,
+      dto.sizeProfiles,
+      dto.sizeProfiles !== undefined || hasStandardSizeVariation,
+    );
 
     const created = await this.prisma.product.create({
       data: {
@@ -305,11 +319,15 @@ export class ArtisansService {
     if (Array.isArray(dto.variationTypes)) {
       await this.variations.replaceForProduct(created.id, dto.variationTypes);
     }
+    if (Array.isArray(dto.sizeProfiles)) {
+      await this.sizing.replaceForProduct(created.id, dto.sizeProfiles);
+    }
     const withKw = await this.prisma.product.findUnique({
       where: { id: created.id },
       include: {
         keywords: { include: { keyword: true } },
         variationTypes: { include: { options: true } },
+        sizeProfiles: { include: { sizes: true, fitChoices: true } },
       },
     });
     return productToDto(withKw ?? created);
@@ -347,6 +365,15 @@ export class ArtisansService {
         code: 'PRODUCT_AUDIENCE_REQUIRED',
       });
     }
+    const hasStandardSizeVariation = (dto.variationTypes ?? []).some(
+      (type) => type.isEnabled !== false && ['size', 'shoe_size'].includes(type.typeName),
+    );
+    validateSizeProfiles(
+      category,
+      designedFor,
+      dto.sizeProfiles,
+      dto.sizeProfiles !== undefined || hasStandardSizeVariation,
+    );
 
     const updated = await this.prisma.product.update({
       where: { id: productId },
@@ -418,11 +445,15 @@ export class ArtisansService {
     if (Array.isArray(dto.variationTypes)) {
       await this.variations.replaceForProduct(productId, dto.variationTypes);
     }
+    if (Array.isArray(dto.sizeProfiles)) {
+      await this.sizing.replaceForProduct(productId, dto.sizeProfiles);
+    }
     const withKw = await this.prisma.product.findUnique({
       where: { id: productId },
       include: {
         keywords: { include: { keyword: true } },
         variationTypes: { include: { options: true } },
+        sizeProfiles: { include: { sizes: true, fitChoices: true } },
       },
     });
     return productToDto(withKw ?? updated);

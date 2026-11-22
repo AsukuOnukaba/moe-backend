@@ -218,6 +218,7 @@ model Product {
   reviews        ProductReview[]
   keywords       ProductKeyword[]
   variationTypes ProductVariationType[]
+  sizeProfiles   ProductSizeProfile[]
 
   @@index([providerId])
   @@index([artisanId])
@@ -1180,6 +1181,59 @@ model VariationOption {
   updatedAt       DateTime             @updatedAt
 
   @@index([variationTypeId])
+}
+
+/// Current structured size guide for one product audience. Historical checkout
+/// selections are copied into Order.customisationData and never read back from here.
+model ProductSizeProfile {
+  id                     String   @id @default(uuid())
+  productId              Int
+  product                Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  audience               String
+  productType            String
+  sizingSystem           String
+  unit                    String
+  measurementDefinitions Json
+  isMadeToMeasure        Boolean  @default(false)
+  instructions           String?
+  illustrationUrl        String?
+  version                 Int      @default(1)
+  sizes                   ProductSizeOption[]
+  fitChoices              ProductFitChoice[]
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([productId, audience])
+  @@index([productId])
+}
+
+model ProductSizeOption {
+  id           String             @id @default(uuid())
+  profileId    String
+  profile      ProductSizeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  label        String
+  measurements Json
+  position     Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([profileId, label])
+  @@index([profileId])
+}
+
+model ProductFitChoice {
+  id              String             @id @default(uuid())
+  profileId       String
+  profile         ProductSizeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  label           String
+  description     String
+  illustrationUrl String?
+  position        Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([profileId, label])
+  @@index([profileId])
 }
 
 model CustomOrder {

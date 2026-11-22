@@ -472,6 +472,7 @@ export class ProductsService {
       include: {
         keywords: { include: { keyword: true } },
         variationTypes: { include: { options: true } },
+        sizeProfiles: { include: { sizes: true, fitChoices: true } },
         artisan: {
           select: {
             userId: true,
@@ -525,6 +526,7 @@ export class ProductsService {
       include: {
         keywords: { include: { keyword: true } },
         variationTypes: { include: { options: true } },
+        sizeProfiles: { include: { sizes: true, fitChoices: true } },
       },
     });
     const byId = new Map(products.map((p) => [p.id, productToDto(p)]));
